@@ -1,13 +1,20 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Environment, Lightformer, PointerLockControls } from "@react-three/drei";
+import { Environment, Lightformer } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 const SPEED = 9;
 const ARENA = 40;
 const ROUND_TIME = 60;
+const EYE = 1.7;
+const GRAVITY = 24;
+const JUMP_V = 9;
+const BULLET_SPEED = 140;
+const SENS = 0.0022;
 
 type Target = { id: number; pos: THREE.Vector3; phase: number };
+type Bullet = { id: number; mesh: THREE.Mesh; dir: THREE.Vector3; left: number };
+type Spark = { mesh: THREE.Mesh; life: number };
 
 function sandTexture() {
   const c = document.createElement("canvas");
@@ -56,72 +63,156 @@ function randTarget(id: number): Target {
   };
 }
 
+const bulletGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6).rotateX(Math.PI / 2);
+const bulletMat = new THREE.MeshBasicMaterial({ color: "#ffd27a" });
+const sparkGeo = new THREE.SphereGeometry(0.15, 8, 8);
+
 function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
-  const { camera, scene } = useThree();
+  const { camera, scene, gl } = useThree();
   const keys = useRef<Record<string, boolean>>({});
   const [targets, setTargets] = useState<Target[]>(() => Array.from({ length: 8 }, (_, i) => randTarget(i)));
   const nextId = useRef(100);
   const gun = useRef<THREE.Group>(null);
+  const muzzle = useRef<THREE.Object3D>(null);
+  const fx = useRef<THREE.Group>(null);
   const recoil = useRef(0);
   const flash = useRef<THREE.PointLight>(null);
+  const look = useRef({ yaw: 0, pitch: 0 });
+  const vy = useRef(0);
+  const bullets = useRef<Bullet[]>([]);
+  const sparks = useRef<Spark[]>([]);
   const sand = useMemo(sandTexture, []);
   const crate = useMemo(crateTexture, []);
   const ray = useMemo(() => new THREE.Raycaster(), []);
 
   useEffect(() => {
-    camera.position.set(0, 1.7, 0); camera.lookAt(0, 1.7, -10);
-    const d = (e: KeyboardEvent) => (keys.current[e.code] = true);
+    camera.position.set(0, EYE, 0);
+    camera.rotation.order = "YXZ";
+  }, [camera]);
+
+  useEffect(() => {
+    const el = gl.domElement;
+    if (playing) el.requestPointerLock?.();
+    const d = (e: KeyboardEvent) => { keys.current[e.code] = true; if (e.code === "Space") e.preventDefault(); };
     const u = (e: KeyboardEvent) => (keys.current[e.code] = false);
+    const move = (e: MouseEvent) => {
+      if (document.pointerLockElement !== el) return;
+      look.current.yaw -= e.movementX * SENS;
+      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - e.movementY * SENS, -1.5, 1.5);
+    };
     const shoot = () => {
-      if (!playing || !document.pointerLockElement) return;
+      if (!playing) return;
+      if (document.pointerLockElement !== el) { el.requestPointerLock?.(); return; }
       recoil.current = 1;
+      camera.updateMatrixWorld();
       ray.setFromCamera(new THREE.Vector2(0, 0), camera);
-      const hits = ray.intersectObjects(scene.children, true);
-      const hit = hits.find((h) => h.object.userData.targetId !== undefined || h.object.userData.solid);
+      const hits = ray.intersectObjects(scene.children, true)
+        .filter((h) => h.object.userData.targetId !== undefined || h.object.userData.solid);
+      const hit = hits[0];
+      const end = hit ? hit.point.clone() : camera.position.clone().add(ray.ray.direction.clone().multiplyScalar(150));
+      // Bullet flies from the muzzle to the exact point under the crosshair
+      const start = new THREE.Vector3();
+      muzzle.current?.getWorldPosition(start);
+      const dir = end.clone().sub(start);
+      const dist = dir.length();
+      dir.normalize();
+      const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+      mesh.position.copy(start);
+      mesh.lookAt(end);
+      fx.current?.add(mesh);
+      bullets.current.push({ id: Math.random(), mesh, dir, left: dist });
+      if (hit) {
+        const s = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: hit.object.userData.targetId !== undefined ? "#ff5a36" : "#fff1c4", transparent: true }));
+        s.position.copy(end);
+        s.visible = false;
+        s.userData.delay = dist / BULLET_SPEED;
+        fx.current?.add(s);
+        sparks.current.push({ mesh: s, life: 0.35 });
+      }
       if (hit && hit.object.userData.targetId !== undefined) {
         const id = hit.object.userData.targetId;
-        setTargets((ts) => ts.map((t) => (t.id === id ? randTarget(nextId.current++) : t)));
-        onHit();
+        setTimeout(() => {
+          setTargets((ts) => ts.map((t) => (t.id === id ? randTarget(nextId.current++) : t)));
+          onHit();
+        }, (dist / BULLET_SPEED) * 1000);
       }
     };
     addEventListener("keydown", d);
     addEventListener("keyup", u);
-    addEventListener("mousedown", shoot);
-    return () => { removeEventListener("keydown", d); removeEventListener("keyup", u); removeEventListener("mousedown", shoot); };
-  }, [camera, scene, ray, onHit, playing]);
+    addEventListener("mousemove", move);
+    el.addEventListener("mousedown", shoot);
+    return () => {
+      removeEventListener("keydown", d); removeEventListener("keyup", u);
+      removeEventListener("mousemove", move); el.removeEventListener("mousedown", shoot);
+    };
+  }, [camera, scene, ray, gl, onHit, playing]);
 
   useFrame((state, raw) => {
-    (window as any).__cam = [camera.position.toArray(), camera.rotation.toArray(), (camera as THREE.PerspectiveCamera).near];
     const dt = Math.min(raw, 0.05);
     const k = keys.current;
-    const fwd = new THREE.Vector3();
-    camera.getWorldDirection(fwd);
-    fwd.y = 0; fwd.normalize();
-    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
+    camera.rotation.set(look.current.pitch, look.current.yaw, 0, "YXZ");
+
+    const fwd = new THREE.Vector3(-Math.sin(look.current.yaw), 0, -Math.cos(look.current.yaw));
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const move = new THREE.Vector3();
-    if (k.KeyW) move.add(fwd);
-    if (k.KeyS) move.sub(fwd);
-    if (k.KeyD) move.add(right);
-    if (k.KeyA) move.sub(right);
-    if (playing && move.lengthSq()) {
+    if (playing) {
+      if (k.KeyW) move.add(fwd);
+      if (k.KeyS) move.sub(fwd);
+      if (k.KeyD) move.add(right);
+      if (k.KeyA) move.sub(right);
+    }
+    const grounded = camera.position.y <= EYE + 0.001;
+    if (playing && k.Space && grounded) vy.current = JUMP_V;
+    vy.current -= GRAVITY * dt;
+    camera.position.y += vy.current * dt;
+    if (camera.position.y < EYE) { camera.position.y = EYE; vy.current = 0; }
+
+    if (move.lengthSq()) {
       move.normalize().multiplyScalar(SPEED * dt * (k.ShiftLeft ? 1.6 : 1));
-      const next = camera.position.clone().add(move);
-      const blocked = CRATES.some((c) => Math.abs(next.x - c.x) < c.s / 2 + 0.4 && Math.abs(next.z - c.z) < c.s / 2 + 0.4);
-      if (!blocked) camera.position.copy(next);
+      const feet = camera.position.y - EYE;
+      const blockedAt = (x: number, z: number) =>
+        CRATES.some((c) => feet < c.s - 0.1 && Math.abs(x - c.x) < c.s / 2 + 0.4 && Math.abs(z - c.z) < c.s / 2 + 0.4);
+      const nx = camera.position.x + move.x, nz = camera.position.z + move.z;
+      if (!blockedAt(nx, camera.position.z)) camera.position.x = nx;
+      if (!blockedAt(camera.position.x, nz)) camera.position.z = nz;
       camera.position.x = THREE.MathUtils.clamp(camera.position.x, -ARENA, ARENA);
       camera.position.z = THREE.MathUtils.clamp(camera.position.z, -ARENA, ARENA);
-      camera.position.y = 1.7 + Math.sin(state.clock.elapsedTime * 12) * 0.04;
     }
+    // Land on top of crates
+    const under = CRATES.find((c) => Math.abs(camera.position.x - c.x) < c.s / 2 + 0.3 && Math.abs(camera.position.z - c.z) < c.s / 2 + 0.3);
+    if (under && vy.current <= 0 && camera.position.y - EYE <= under.s && camera.position.y - EYE > under.s - 0.5) {
+      camera.position.y = EYE + under.s; vy.current = 0;
+    }
+    if (under && camera.position.y === EYE + under.s && playing && k.Space) vy.current = JUMP_V;
+
     recoil.current *= Math.exp(-12 * dt);
+    const bob = move.lengthSq() && grounded ? Math.sin(state.clock.elapsedTime * 12) * 0.015 : 0;
     if (gun.current) {
       gun.current.position.copy(camera.position);
       gun.current.quaternion.copy(camera.quaternion);
-      gun.current.translateX(0.3);
-      gun.current.translateY(-0.28);
-      gun.current.translateZ(-0.9 + recoil.current * 0.12);
-      gun.current.rotateX(recoil.current * 0.25);
+      gun.current.translateX(0.25);
+      gun.current.translateY(-0.22 + bob);
+      gun.current.translateZ(-0.5 + recoil.current * 0.1);
+      gun.current.rotateX(recoil.current * 0.2);
     }
     if (flash.current) flash.current.intensity = recoil.current > 0.7 ? 8 : 0;
+
+    bullets.current = bullets.current.filter((b) => {
+      const step = Math.min(BULLET_SPEED * dt, b.left);
+      b.mesh.position.addScaledVector(b.dir, step);
+      b.left -= step;
+      if (b.left <= 0) { fx.current?.remove(b.mesh); return false; }
+      return true;
+    });
+    sparks.current = sparks.current.filter((s) => {
+      if (s.mesh.userData.delay > 0) { s.mesh.userData.delay -= dt; return true; }
+      s.mesh.visible = true;
+      s.life -= dt;
+      s.mesh.scale.setScalar(1 + (0.35 - s.life) * 8);
+      (s.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(s.life / 0.35, 0);
+      if (s.life <= 0) { fx.current?.remove(s.mesh); return false; }
+      return true;
+    });
   });
 
   return (
@@ -143,16 +234,22 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
         </mesh>
       ))}
       {targets.map((t) => <TargetMesh key={t.id} t={t} />)}
-      <group ref={gun} scale={0.6}>
+      <group ref={fx} />
+      <group ref={gun}>
         <mesh>
-          <boxGeometry args={[0.1, 0.14, 0.6]} />
+          <boxGeometry args={[0.07, 0.1, 0.45]} />
           <meshStandardMaterial color="#2b2b2b" metalness={0.8} roughness={0.3} />
         </mesh>
-        <mesh position={[0, -0.12, 0.15]} rotation-x={0.3}>
-          <boxGeometry args={[0.08, 0.2, 0.1]} />
+        <mesh position={[0, 0, -0.3]} rotation-x={Math.PI / 2}>
+          <cylinderGeometry args={[0.02, 0.02, 0.2, 8]} />
+          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, -0.1, 0.12]} rotation-x={0.3}>
+          <boxGeometry args={[0.06, 0.16, 0.08]} />
           <meshStandardMaterial color="#4a3020" />
         </mesh>
-        <pointLight ref={flash} position={[0, 0, -0.4]} color="#ffb347" distance={6} intensity={0} />
+        <object3D ref={muzzle} position={[0, 0, -0.42]} />
+        <pointLight ref={flash} position={[0, 0, -0.45]} color="#ffb347" distance={6} intensity={0} />
       </group>
     </>
   );
@@ -184,7 +281,6 @@ export function Game() {
   const [best, setBest] = useState(0);
   const [hitFx, setHitFx] = useState(0);
 
-  useEffect(() => { (window as any).__dbg = true; }, []);
   useEffect(() => setBest(Number(localStorage.getItem("fps-best") || 0)), []);
   useEffect(() => {
     if (state !== "playing") return;
@@ -203,7 +299,7 @@ export function Game() {
 
   return (
     <div className="fixed inset-0 bg-background">
-      <Canvas shadows dpr={[1, 2]} camera={{ fov: 75, position: [0, 1.7, 0] }}>
+      <Canvas shadows dpr={[1, 2]} camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}>
         <color attach="background" args={["#e8b07a"]} />
         <fog attach="fog" args={["#e8b07a", 20, 75]} />
         <hemisphereLight args={["#ffe2b8", "#7a5230", 0.6]} />
@@ -214,7 +310,6 @@ export function Game() {
           <Lightformer intensity={1} color="#ffcc99" position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[20, 1, 1]} />
         </Environment>
         <World onHit={onHit} playing={state === "playing"} />
-        {state === "playing" && <PointerLockControls />}
       </Canvas>
 
       <div className="pointer-events-none fixed inset-0 z-10 font-mono text-foreground">
@@ -222,15 +317,13 @@ export function Game() {
           <span>SCORE {score}</span>
           <span>⏱ {time}s</span>
         </div>
-        {state === "playing" && (
-          <div key={hitFx} className={`fps-crosshair ${hitFx ? "fps-hit" : ""}`} />
-        )}
+        {state === "playing" && <div key={hitFx} className={`fps-crosshair ${hitFx ? "fps-hit" : ""}`} />}
         {state !== "playing" && (
           <div className="pointer-events-auto fixed inset-0 flex flex-col items-center justify-center gap-4 bg-background/70 text-center">
             <h1 className="fps-title text-6xl">DUST RANGE</h1>
             {state === "over" && <p className="text-3xl">You hit {score} targets!</p>}
             <p className="text-lg">Best: {Math.max(best, state === "over" ? score : 0)}</p>
-            <p className="max-w-md text-muted-foreground">WASD to move · Shift to sprint · Mouse to aim · Click to shoot. Hit as many targets as you can in {ROUND_TIME}s.</p>
+            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot. Hit as many targets as you can in {ROUND_TIME}s.</p>
             <button onClick={start} className="rounded-md bg-primary px-8 py-3 text-xl font-bold text-primary-foreground">
               {state === "over" ? "PLAY AGAIN" : "START"}
             </button>

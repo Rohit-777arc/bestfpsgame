@@ -91,6 +91,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
   }, [camera, scene, ray, onHit, playing]);
 
   useFrame((state, raw) => {
+    (window as any).__cam = [camera.position.toArray(), camera.rotation.toArray(), (camera as THREE.PerspectiveCamera).near];
     const dt = Math.min(raw, 0.05);
     const k = keys.current;
     const fwd = new THREE.Vector3();
@@ -183,6 +184,7 @@ export function Game() {
   const [best, setBest] = useState(0);
   const [hitFx, setHitFx] = useState(0);
 
+  useEffect(() => { (window as any).__dbg = true; }, []);
   useEffect(() => setBest(Number(localStorage.getItem("fps-best") || 0)), []);
   useEffect(() => {
     if (state !== "playing") return;

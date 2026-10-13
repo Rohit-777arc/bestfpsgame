@@ -148,3 +148,4 @@
 background:linear-gradient(var(--foreground),var(--foreground)) center/2px 100% no-repeat,linear-gradient(var(--foreground),var(--foreground)) center/100% 2px no-repeat;}
 @keyframes fps-hit{0%{transform:translate(-50%,-50%) scale(1.8) rotate(45deg);filter:drop-shadow(0 0 4px var(--primary))}100%{transform:translate(-50%,-50%)}}
 .fps-hit{animation:fps-hit .25s ease-out;}
+.fps-hud{text-shadow:2px 2px 0 oklch(0 0 0/.6);}

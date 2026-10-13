@@ -69,7 +69,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
   const ray = useMemo(() => new THREE.Raycaster(), []);
 
   useEffect(() => {
-    camera.position.set(0, 1.7, 0);
+    camera.position.set(0, 1.7, 0); camera.lookAt(0, 1.7, -10);
     const d = (e: KeyboardEvent) => (keys.current[e.code] = true);
     const u = (e: KeyboardEvent) => (keys.current[e.code] = false);
     const shoot = () => {
@@ -117,7 +117,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
       gun.current.quaternion.copy(camera.quaternion);
       gun.current.translateX(0.3);
       gun.current.translateY(-0.28);
-      gun.current.translateZ(-0.6 + recoil.current * 0.12);
+      gun.current.translateZ(-0.9 + recoil.current * 0.12);
       gun.current.rotateX(recoil.current * 0.25);
     }
     if (flash.current) flash.current.intensity = recoil.current > 0.7 ? 8 : 0;
@@ -142,7 +142,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
         </mesh>
       ))}
       {targets.map((t) => <TargetMesh key={t.id} t={t} />)}
-      <group ref={gun}>
+      <group ref={gun} scale={0.6}>
         <mesh>
           <boxGeometry args={[0.1, 0.14, 0.6]} />
           <meshStandardMaterial color="#2b2b2b" metalness={0.8} roughness={0.3} />
@@ -216,7 +216,7 @@ export function Game() {
       </Canvas>
 
       <div className="pointer-events-none fixed inset-0 z-10 font-mono text-foreground">
-        <div className="flex justify-between p-5 text-2xl font-bold drop-shadow">
+        <div className="flex justify-between p-5 text-2xl font-bold fps-hud">
           <span>SCORE {score}</span>
           <span>⏱ {time}s</span>
         </div>

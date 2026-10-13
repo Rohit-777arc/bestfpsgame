@@ -156,3 +156,17 @@
 .luno-wild{background:conic-gradient(var(--luno-red) 0 25%,var(--luno-yellow) 0 50%,var(--luno-green) 0 75%,var(--luno-blue) 0)}.luno-wild .luno-oval{color:var(--luno-black)}
 .luno-back{border-radius:.6rem;border:3px solid var(--luno-white);background:var(--luno-black);color:var(--luno-yellow);box-shadow:inset 0 0 0 6px var(--luno-red);}
 .luno-chip{width:3rem;height:3rem;border-radius:9999px;border:4px solid var(--luno-white);cursor:pointer;}
+
+@keyframes luno-fly-0{from{transform:translateY(320px) rotate(-30deg) scale(.8);opacity:0}}
+@keyframes luno-fly-1{from{transform:translate(-320px,-260px) rotate(-40deg) scale(.6);opacity:0}}
+@keyframes luno-fly-2{from{transform:translateY(-280px) rotate(30deg) scale(.6);opacity:0}}
+@keyframes luno-fly-3{from{transform:translate(320px,-260px) rotate(40deg) scale(.6);opacity:0}}
+.luno-fly-0{animation:luno-fly-0 .7s cubic-bezier(.2,.8,.3,1.2)}
+.luno-fly-1{animation:luno-fly-1 .7s cubic-bezier(.2,.8,.3,1.2)}
+.luno-fly-2{animation:luno-fly-2 .7s cubic-bezier(.2,.8,.3,1.2)}
+.luno-fly-3{animation:luno-fly-3 .7s cubic-bezier(.2,.8,.3,1.2)}
+@keyframes luno-enter{from{transform:translateY(-160px) rotate(20deg) scale(.5);opacity:0}}
+.luno-enter{animation:luno-enter .6s cubic-bezier(.2,.8,.3,1.1) backwards}
+@keyframes luno-msg{from{transform:scale(.7);opacity:0}}
+.luno-msg{animation:luno-msg .4s ease-out}
+.luno-deck{transition:transform .2s}.luno-deck:not(:disabled):hover{transform:translateY(-6px) rotate(-3deg)}

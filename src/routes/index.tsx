@@ -20,7 +20,7 @@ const NAMES = ["You", "Bot Blaze", "Bot Pixel", "Bot Nova"];
 
 type G = {
   deck: Card[]; discard: Card[]; hands: Card[][];
-  turn: number; dir: 1 | -1; color: Color; msg: string; winner: number | null;
+  turn: number; dir: 1 | -1; color: Color; msg: string; winner: number | null; from: number;
 };
 
 function newGame(): G {
@@ -28,7 +28,7 @@ function newGame(): G {
   const hands = [0, 1, 2, 3].map(() => deck.splice(0, 7));
   let i = deck.findIndex((c) => c.color !== "wild" && /^\d$/.test(c.value));
   const [top] = deck.splice(i, 1);
-  return { deck, discard: [top], hands, turn: 0, dir: 1, color: top.color, msg: "Your turn!", winner: null };
+  return { deck, discard: [top], hands, turn: 0, dir: 1, color: top.color, msg: "Your turn!", winner: null, from: -1 };
 }
 
 function draw(g: G, p: number, n: number) {
@@ -45,6 +45,7 @@ const nextP = (g: G, s = 1) => (((g.turn + g.dir * s) % 4) + 4) % 4;
 
 function play(prev: G, p: number, card: Card, chosen?: Color): G {
   const g: G = { ...prev, deck: [...prev.deck], discard: [...prev.discard, card], hands: prev.hands.map((h) => [...h]) };
+  g.from = p;
   g.hands[p] = g.hands[p].filter((c) => c.id !== card.id);
   g.color = card.color === "wild" ? chosen ?? bestColor(g.hands[p]) : card.color;
   if (!g.hands[p].length) { g.winner = p; g.msg = p === 0 ? "You win! 🎉" : `${NAMES[p]} wins!`; return g; }
@@ -64,7 +65,7 @@ function CardView({ card, onClick, playable, small }: { card: Card; onClick?: ()
     <button
       onClick={onClick}
       disabled={!onClick}
-      className={`luno-card luno-${card.color} ${small ? "h-24 w-16 text-2xl" : "h-32 w-20 text-3xl"} ${playable ? "luno-playable" : onClick ? "opacity-60" : ""}`}
+      className={`luno-card luno-${card.color} ${small ? "h-24 w-16 text-2xl" : "h-32 w-20 text-3xl"} luno-enter ${playable ? "luno-playable" : onClick ? "opacity-60" : ""}`}
     >
       <span className="luno-oval">{label}</span>
     </button>
@@ -88,7 +89,7 @@ function Index() {
         const n: G = { ...g, deck: [...g.deck], discard: [...g.discard], hands: g.hands.map((h) => [...h]) };
         draw(n, p, 1); n.msg = `${NAMES[p]} drew a card`; n.turn = nextP(n); setG(n);
       }
-    }, 900);
+    }, 1700);
     return () => clearTimeout(t);
   }, [g]);
 
@@ -119,7 +120,7 @@ function Index() {
             <div className="font-bold">{NAMES[p]}</div>
             <div className="text-sm text-muted-foreground">{g.hands[p].length} cards{g.hands[p].length === 1 && " · LUNO!"}</div>
             <div className="mt-2 flex justify-center -space-x-8">
-              {g.hands[p].slice(0, 10).map((c) => <div key={c.id} className="luno-back h-14 w-10" />)}
+              {g.hands[p].slice(0, 10).map((c) => <div key={c.id} className="luno-back luno-enter h-14 w-10" />)}
             </div>
           </div>
         ))}
@@ -127,11 +128,11 @@ function Index() {
 
       <section className="mx-auto mt-10 flex max-w-5xl flex-col items-center gap-4">
         <div className="flex items-center gap-8">
-          <button onClick={drawMine} disabled={!myTurn} className="luno-back h-32 w-20 text-sm font-bold">DRAW</button>
-          <CardView card={top} />
+          <button onClick={drawMine} disabled={!myTurn} className="luno-back luno-deck h-32 w-20 text-sm font-bold">DRAW</button>
+          <div className="relative h-32 w-20">{g.discard.length > 1 && <div className="absolute inset-0 rotate-6 opacity-70"><CardView card={g.discard[g.discard.length - 2]} /></div>}<div key={top.id} className={`absolute inset-0 luno-fly-${g.from}`}><CardView card={top} /></div></div>
           <div className={`luno-chip luno-${g.color}`} title="Current color" />
         </div>
-        <p className="text-lg font-semibold">{g.msg} <span className="text-muted-foreground">{g.winner === null && (g.dir === 1 ? "↻" : "↺")}</span></p>
+        <p key={g.msg + g.turn} className="luno-msg text-lg font-semibold">{g.msg} <span className="text-muted-foreground">{g.winner === null && (g.dir === 1 ? "↻" : "↺")}</span></p>
         {pending && (
           <div className="flex gap-3 rounded-2xl bg-card p-4">
             <span className="self-center font-bold">Pick a color:</span>

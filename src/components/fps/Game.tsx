@@ -12,7 +12,7 @@ const JUMP_V = 9;
 const BULLET_SPEED = 140;
 const SENS = 0.0022;
 
-type Target = { id: number; pos: THREE.Vector3; phase: number };
+type Target = { id: number; pos: THREE.Vector3; phase: number; down?: boolean };
 type Bullet = { id: number; mesh: THREE.Mesh; dir: THREE.Vector3; left: number };
 type Spark = { mesh: THREE.Mesh; life: number };
 
@@ -54,6 +54,8 @@ const CRATES = Array.from({ length: 18 }, (_, i) => {
   const r = 10 + (i % 3) * 7;
   return { x: Math.cos(a) * r, z: Math.sin(a) * r, s: 1.5 + (i % 2) };
 });
+
+const BARRELS = Array.from({ length: 14 }, (_, i) => [Math.cos(i * 2.4) * (6 + i * 2), Math.sin(i * 2.4) * (6 + i * 2)]);
 
 function randTarget(id: number): Target {
   return {
@@ -132,7 +134,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
       if (hit && hit.object.userData.targetId !== undefined) {
         const id = hit.object.userData.targetId;
         setTimeout(() => {
-          setTargets((ts) => ts.map((t) => (t.id === id ? randTarget(nextId.current++) : t)));
+          setTargets((ts) => ts.map((t) => (t.id === id ? { ...t, down: true } : t)));
           onHit();
         }, (dist / BULLET_SPEED) * 1000);
       }
@@ -233,12 +235,18 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
           <meshStandardMaterial color="#a0704a" roughness={0.9} />
         </mesh>
       ))}
-      {targets.map((t) => <TargetMesh key={t.id} t={t} />)}
+      {BARRELS.map((b, i) => (
+        <mesh key={"b" + i} position={[b[0], 0.6, b[1]]} castShadow receiveShadow userData={{ solid: true }}>
+          <cylinderGeometry args={[0.45, 0.45, 1.2, 16]} />
+          <meshStandardMaterial color={i % 2 ? "#5d6b4a" : "#7a3b2a"} metalness={0.5} roughness={0.6} />
+        </mesh>
+      ))}
+      {targets.map((t) => <TargetMesh key={t.id} t={t} onRespawn={(rid) => setTargets((ts) => ts.map((x) => (x.id === rid ? randTarget(nextId.current++) : x)))} />)}
       <group ref={fx} />
       <group ref={gun}>
         <mesh>
           <boxGeometry args={[0.07, 0.1, 0.45]} />
-          <meshStandardMaterial color="#2b2b2b" metalness={0.8} roughness={0.3} />
+          <meshStandardMaterial color="#3a3d40" metalness={0.7} roughness={0.45} />
         </mesh>
         <mesh position={[0, 0, -0.3]} rotation-x={Math.PI / 2}>
           <cylinderGeometry args={[0.02, 0.02, 0.2, 8]} />
@@ -255,21 +263,70 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
   );
 }
 
-function TargetMesh({ t }: { t: Target }) {
+const skin = new THREE.MeshStandardMaterial({ color: "#c8a77a", roughness: 0.85 });
+const cloth = new THREE.MeshStandardMaterial({ color: "#6b6f4a", roughness: 0.95 });
+const strap = new THREE.MeshStandardMaterial({ color: "#3a2a1a", roughness: 0.7 });
+const bullseye = new THREE.MeshStandardMaterial({ color: "#a8322a", roughness: 0.8 });
+
+function Part({ id, geo, mat, ...rest }: { id: number | undefined; geo: THREE.BufferGeometry; mat: THREE.Material } & Record<string, unknown>) {
+  return <mesh geometry={geo} material={mat} castShadow receiveShadow userData={id === undefined ? {} : { targetId: id }} {...rest} />;
+}
+const G = {
+  torso: new THREE.CapsuleGeometry(0.28, 0.55, 6, 12),
+  head: new THREE.SphereGeometry(0.2, 16, 16),
+  limb: new THREE.CapsuleGeometry(0.08, 0.5, 4, 8),
+  leg: new THREE.CapsuleGeometry(0.1, 0.6, 4, 8),
+  belt: new THREE.CylinderGeometry(0.3, 0.3, 0.08, 16),
+  eye: new THREE.CircleGeometry(0.12, 20),
+};
+
+function TargetMesh({ t, onRespawn }: { t: Target; onRespawn: (id: number) => void }) {
   const ref = useRef<THREE.Group>(null);
-  useFrame((s) => {
-    if (!ref.current) return;
-    ref.current.position.set(t.pos.x + Math.sin(s.clock.elapsedTime + t.phase) * 2, t.pos.y + Math.sin(s.clock.elapsedTime * 2 + t.phase) * 0.4, t.pos.z);
-    ref.current.lookAt(s.camera.position);
+  const body = useRef<THREE.Group>(null);
+  const lLeg = useRef<THREE.Group>(null), rLeg = useRef<THREE.Group>(null);
+  const lArm = useRef<THREE.Group>(null), rArm = useRef<THREE.Group>(null);
+  const goal = useRef(new THREE.Vector3());
+  const fall = useRef(0);
+  const speed = useMemo(() => 1.5 + Math.random() * 2, []);
+  const pickGoal = () => goal.current.set((Math.random() - 0.5) * ARENA * 1.6, 0, (Math.random() - 0.5) * ARENA * 1.6);
+  useEffect(() => { if (ref.current) ref.current.position.set(t.pos.x, 0, t.pos.z); pickGoal(); }, []);
+  useFrame((s, raw) => {
+    const dt = Math.min(raw, 0.05);
+    const g = ref.current; if (!g || !body.current) return;
+    if (t.down) {
+      fall.current = Math.min(fall.current + dt * 3, 1);
+      body.current.rotation.x = -fall.current * (Math.PI / 2) * 0.95;
+      body.current.position.y = -fall.current * 0.4;
+      if (fall.current >= 1 && !g.userData.timer) g.userData.timer = setTimeout(() => onRespawn(t.id), 1200);
+      return;
+    }
+    const to = goal.current.clone().sub(g.position); to.y = 0;
+    if (to.length() < 1) pickGoal();
+    to.normalize();
+    const next = g.position.clone().addScaledVector(to, speed * dt);
+    if (CRATES.some((c) => Math.abs(next.x - c.x) < c.s / 2 + 0.5 && Math.abs(next.z - c.z) < c.s / 2 + 0.5)) pickGoal();
+    else g.position.copy(next);
+    g.rotation.y = THREE.MathUtils.lerp(g.rotation.y, Math.atan2(to.x, to.z), 1 - Math.exp(-6 * dt));
+    const w = Math.sin(s.clock.elapsedTime * speed * 4 + t.phase) * 0.6;
+    if (lLeg.current) lLeg.current.rotation.x = w;
+    if (rLeg.current) rLeg.current.rotation.x = -w;
+    if (lArm.current) lArm.current.rotation.x = -w * 0.8;
+    if (rArm.current) rArm.current.rotation.x = w * 0.8;
+    body.current.position.y = Math.abs(Math.cos(s.clock.elapsedTime * speed * 4 + t.phase)) * 0.05;
   });
+  const id = t.down ? undefined : t.id;
   return (
     <group ref={ref}>
-      {[0.8, 0.55, 0.3].map((r, i) => (
-        <mesh key={i} position-z={i * 0.02} userData={{ targetId: t.id }} castShadow>
-          <circleGeometry args={[r, 32]} />
-          <meshStandardMaterial color={i % 2 ? "#f4efe6" : "#c0392b"} side={THREE.DoubleSide} />
-        </mesh>
-      ))}
+      <group ref={body}>
+        <Part id={id} geo={G.torso} mat={cloth} position={[0, 1.3, 0]} />
+        <Part id={id} geo={G.eye} mat={bullseye} position={[0, 1.4, 0.29]} />
+        <Part id={id} geo={G.belt} mat={strap} position={[0, 0.98, 0]} />
+        <Part id={id} geo={G.head} mat={skin} position={[0, 1.95, 0]} />
+        <group ref={lArm} position={[-0.38, 1.6, 0]}><Part id={id} geo={G.limb} mat={cloth} position={[0, -0.32, 0]} /></group>
+        <group ref={rArm} position={[0.38, 1.6, 0]}><Part id={id} geo={G.limb} mat={cloth} position={[0, -0.32, 0]} /></group>
+        <group ref={lLeg} position={[-0.14, 0.95, 0]}><Part id={id} geo={G.leg} mat={strap} position={[0, -0.45, 0]} /></group>
+        <group ref={rLeg} position={[0.14, 0.95, 0]}><Part id={id} geo={G.leg} mat={strap} position={[0, -0.45, 0]} /></group>
+      </group>
     </group>
   );
 }
@@ -299,11 +356,11 @@ export function Game() {
 
   return (
     <div className="fixed inset-0 bg-background">
-      <Canvas shadows dpr={[1, 2]} camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}>
-        <color attach="background" args={["#e8b07a"]} />
-        <fog attach="fog" args={["#e8b07a", 20, 75]} />
+      <Canvas shadows gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }} dpr={[1, 2]} camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}>
+        <color attach="background" args={["#d9c3a0"]} />
+        <fog attach="fog" args={["#d9c3a0", 15, 85]} />
         <hemisphereLight args={["#ffe2b8", "#7a5230", 0.6]} />
-        <directionalLight position={[20, 30, 10]} intensity={2} castShadow shadow-mapSize={[2048, 2048]}
+        <directionalLight position={[25, 35, 12]} intensity={2.6} color="#fff1da" shadow-bias={-0.0005} castShadow shadow-mapSize={[2048, 2048]}
           shadow-camera-left={-45} shadow-camera-right={45} shadow-camera-top={45} shadow-camera-bottom={-45} />
         <Environment>
           <Lightformer intensity={2} position={[0, 5, 0]} scale={[10, 10, 1]} />
@@ -321,9 +378,9 @@ export function Game() {
         {state !== "playing" && (
           <div className="pointer-events-auto fixed inset-0 flex flex-col items-center justify-center gap-4 bg-background/70 text-center">
             <h1 className="fps-title text-6xl">DUST RANGE</h1>
-            {state === "over" && <p className="text-3xl">You hit {score} targets!</p>}
+            {state === "over" && <p className="text-3xl">You dropped {score} dummies!</p>}
             <p className="text-lg">Best: {Math.max(best, state === "over" ? score : 0)}</p>
-            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot. Hit as many targets as you can in {ROUND_TIME}s.</p>
+            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot. Take down as many moving dummies as you can in {ROUND_TIME}s.</p>
             <button onClick={start} className="rounded-md bg-primary px-8 py-3 text-xl font-bold text-primary-foreground">
               {state === "over" ? "PLAY AGAIN" : "START"}
             </button>

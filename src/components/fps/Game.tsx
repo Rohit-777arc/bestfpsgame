@@ -11,6 +11,7 @@ const GRAVITY = 24;
 const JUMP_V = 9;
 const BULLET_SPEED = 140;
 const SENS = 0.0022;
+const SCOPE_FOV = 20;
 
 type Target = { id: number; pos: THREE.Vector3; phase: number; down?: boolean };
 type Bullet = { id: number; mesh: THREE.Mesh; dir: THREE.Vector3; left: number };
@@ -69,7 +70,7 @@ const bulletGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6).rotateX(Math.PI
 const bulletMat = new THREE.MeshBasicMaterial({ color: "#ffd27a" });
 const sparkGeo = new THREE.SphereGeometry(0.15, 8, 8);
 
-function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
+function World({ onHit, playing, onAim }: { onHit: () => void; playing: boolean; onAim: (v: boolean) => void }) {
   const { camera, scene, gl } = useThree();
   const keys = useRef<Record<string, boolean>>({});
   const [targets, setTargets] = useState<Target[]>(() => Array.from({ length: 8 }, (_, i) => randTarget(i)));
@@ -80,6 +81,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
   const recoil = useRef(0);
   const flash = useRef<THREE.PointLight>(null);
   const look = useRef({ yaw: 0, pitch: 0 });
+  const aiming = useRef(false);
   const vy = useRef(0);
   const bullets = useRef<Bullet[]>([]);
   const sparks = useRef<Spark[]>([]);
@@ -95,13 +97,25 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
   useEffect(() => {
     const el = gl.domElement;
     if (playing) el.requestPointerLock?.();
+    else if (aiming.current) { aiming.current = false; onAim(false); }
     const d = (e: KeyboardEvent) => { keys.current[e.code] = true; if (e.code === "Space") e.preventDefault(); };
     const u = (e: KeyboardEvent) => (keys.current[e.code] = false);
     const move = (e: MouseEvent) => {
       if (document.pointerLockElement !== el) return;
-      look.current.yaw -= e.movementX * SENS;
-      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - e.movementY * SENS, -1.5, 1.5);
+      const s = SENS * (aiming.current ? 0.35 : 1);
+      look.current.yaw -= e.movementX * s;
+      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - e.movementY * s, -1.5, 1.5);
     };
+    const aimOn = (e: MouseEvent) => {
+      if (!playing || e.button !== 2) return;
+      if (document.pointerLockElement !== el) return;
+      aiming.current = true; onAim(true);
+    };
+    const aimOff = (e: MouseEvent) => {
+      if (e.button !== 2 || !aiming.current) return;
+      aiming.current = false; onAim(false);
+    };
+    const noCtx = (e: Event) => e.preventDefault();
     const shoot = () => {
       if (!playing) return;
       if (document.pointerLockElement !== el) { el.requestPointerLock?.(); return; }
@@ -143,16 +157,28 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
     addEventListener("keyup", u);
     addEventListener("mousemove", move);
     el.addEventListener("mousedown", shoot);
+    el.addEventListener("mousedown", aimOn);
+    addEventListener("mouseup", aimOff);
+    el.addEventListener("contextmenu", noCtx);
     return () => {
       removeEventListener("keydown", d); removeEventListener("keyup", u);
       removeEventListener("mousemove", move); el.removeEventListener("mousedown", shoot);
+      el.removeEventListener("mousedown", aimOn); removeEventListener("mouseup", aimOff);
+      el.removeEventListener("contextmenu", noCtx);
     };
-  }, [camera, scene, ray, gl, onHit, playing]);
+  }, [camera, scene, ray, gl, onHit, onAim, playing]);
 
   useFrame((state, raw) => {
     const dt = Math.min(raw, 0.05);
     const k = keys.current;
     camera.rotation.set(look.current.pitch, look.current.yaw, 0, "YXZ");
+
+    const cam = camera as THREE.PerspectiveCamera;
+    const targetFov = aiming.current ? SCOPE_FOV : 75;
+    if (Math.abs(cam.fov - targetFov) > 0.01) {
+      cam.fov = THREE.MathUtils.lerp(cam.fov, targetFov, 1 - Math.exp(-14 * dt));
+      cam.updateProjectionMatrix();
+    }
 
     const fwd = new THREE.Vector3(-Math.sin(look.current.yaw), 0, -Math.cos(look.current.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
@@ -190,6 +216,7 @@ function World({ onHit, playing }: { onHit: () => void; playing: boolean }) {
     recoil.current *= Math.exp(-12 * dt);
     const bob = move.lengthSq() && grounded ? Math.sin(state.clock.elapsedTime * 12) * 0.015 : 0;
     if (gun.current) {
+      gun.current.visible = !aiming.current;
       gun.current.position.copy(camera.position);
       gun.current.quaternion.copy(camera.quaternion);
       gun.current.translateX(0.25);
@@ -337,6 +364,7 @@ export function Game() {
   const [state, setState] = useState<"menu" | "playing" | "over">("menu");
   const [best, setBest] = useState(0);
   const [hitFx, setHitFx] = useState(0);
+  const [aiming, setAiming] = useState(false);
 
   useEffect(() => setBest(Number(localStorage.getItem("fps-best") || 0)), []);
   useEffect(() => {
@@ -366,21 +394,29 @@ export function Game() {
           <Lightformer intensity={2} position={[0, 5, 0]} scale={[10, 10, 1]} />
           <Lightformer intensity={1} color="#ffcc99" position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[20, 1, 1]} />
         </Environment>
-        <World onHit={onHit} playing={state === "playing"} />
+        <World onHit={onHit} playing={state === "playing"} onAim={setAiming} />
       </Canvas>
+
+      {aiming && state === "playing" && (
+        <div className="fps-scope">
+          <span className="fps-scope-line-h" />
+          <span className="fps-scope-line-v" />
+          <span className="fps-scope-dot" />
+        </div>
+      )}
 
       <div className="pointer-events-none fixed inset-0 z-10 font-mono text-foreground">
         <div className="flex justify-between p-5 text-2xl font-bold fps-hud">
           <span>SCORE {score}</span>
           <span>⏱ {time}s</span>
         </div>
-        {state === "playing" && <div key={hitFx} className={`fps-crosshair ${hitFx ? "fps-hit" : ""}`} />}
+        {state === "playing" && !aiming && <div key={hitFx} className={`fps-crosshair ${hitFx ? "fps-hit" : ""}`} />}
         {state !== "playing" && (
           <div className="pointer-events-auto fixed inset-0 flex flex-col items-center justify-center gap-4 bg-background/70 text-center">
             <h1 className="fps-title text-6xl">DUST RANGE</h1>
             {state === "over" && <p className="text-3xl">You dropped {score} dummies!</p>}
             <p className="text-lg">Best: {Math.max(best, state === "over" ? score : 0)}</p>
-            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot. Take down as many moving dummies as you can in {ROUND_TIME}s.</p>
+            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot · Hold right-click to aim down the scope. Take down as many moving dummies as you can in {ROUND_TIME}s.</p>
             <button onClick={start} className="rounded-md bg-primary px-8 py-3 text-xl font-bold text-primary-foreground">
               {state === "over" ? "PLAY AGAIN" : "START"}
             </button>

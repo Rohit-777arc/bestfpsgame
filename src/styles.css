@@ -149,3 +149,9 @@ background:linear-gradient(var(--foreground),var(--foreground)) center/2px 100% 
 @keyframes fps-hit{0%{transform:translate(-50%,-50%) scale(1.8) rotate(45deg);filter:drop-shadow(0 0 4px var(--primary))}100%{transform:translate(-50%,-50%)}}
 .fps-hit{animation:fps-hit .25s ease-out;}
 .fps-hud{text-shadow:2px 2px 0 oklch(0 0 0/.6);}
+.fps-scope{position:fixed;inset:0;z-index:5;pointer-events:none;background:radial-gradient(circle at 50% 50%,transparent 0 33vmin,oklch(0.08 0 0/.97) calc(33vmin + 3px));}
+.fps-scope::before{content:"";position:absolute;left:50%;top:50%;width:66vmin;height:66vmin;transform:translate(-50%,-50%);border-radius:50%;box-shadow:inset 0 0 60px oklch(0 0 0/.75),inset 0 0 8px oklch(0 0 0/.9);}
+.fps-scope-line-h,.fps-scope-line-v{position:absolute;left:50%;top:50%;background:var(--foreground);opacity:.9;}
+.fps-scope-line-h{width:66vmin;height:1.5px;transform:translate(-50%,-50%);}
+.fps-scope-line-v{width:1.5px;height:66vmin;transform:translate(-50%,-50%);}
+.fps-scope-dot{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;transform:translate(-50%,-50%);background:var(--primary);}

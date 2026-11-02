@@ -175,8 +175,9 @@ function World({ onHit, playing, onAim }: { onHit: () => void; playing: boolean;
 
     const targetFov = aiming.current ? SCOPE_FOV : 75;
     if (Math.abs(camera.fov - targetFov) > 0.01) {
-      camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.exp(-14 * dt));
-      camera.updateProjectionMatrix();
+      const cam = camera as THREE.PerspectiveCamera;
+      cam.fov = THREE.MathUtils.lerp(cam.fov, targetFov, 1 - Math.exp(-14 * dt));
+      cam.updateProjectionMatrix();
     }
 
     const fwd = new THREE.Vector3(-Math.sin(look.current.yaw), 0, -Math.cos(look.current.yaw));

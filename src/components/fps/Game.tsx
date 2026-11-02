@@ -363,6 +363,7 @@ export function Game() {
   const [state, setState] = useState<"menu" | "playing" | "over">("menu");
   const [best, setBest] = useState(0);
   const [hitFx, setHitFx] = useState(0);
+  const [aiming, setAiming] = useState(false);
 
   useEffect(() => setBest(Number(localStorage.getItem("fps-best") || 0)), []);
   useEffect(() => {
@@ -392,21 +393,29 @@ export function Game() {
           <Lightformer intensity={2} position={[0, 5, 0]} scale={[10, 10, 1]} />
           <Lightformer intensity={1} color="#ffcc99" position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[20, 1, 1]} />
         </Environment>
-        <World onHit={onHit} playing={state === "playing"} />
+        <World onHit={onHit} playing={state === "playing"} onAim={setAiming} />
       </Canvas>
+
+      {aiming && state === "playing" && (
+        <div className="fps-scope">
+          <span className="fps-scope-line-h" />
+          <span className="fps-scope-line-v" />
+          <span className="fps-scope-dot" />
+        </div>
+      )}
 
       <div className="pointer-events-none fixed inset-0 z-10 font-mono text-foreground">
         <div className="flex justify-between p-5 text-2xl font-bold fps-hud">
           <span>SCORE {score}</span>
           <span>⏱ {time}s</span>
         </div>
-        {state === "playing" && <div key={hitFx} className={`fps-crosshair ${hitFx ? "fps-hit" : ""}`} />}
+        {state === "playing" && !aiming && <div key={hitFx} className={`fps-crosshair ${hitFx ? "fps-hit" : ""}`} />}
         {state !== "playing" && (
           <div className="pointer-events-auto fixed inset-0 flex flex-col items-center justify-center gap-4 bg-background/70 text-center">
             <h1 className="fps-title text-6xl">DUST RANGE</h1>
             {state === "over" && <p className="text-3xl">You dropped {score} dummies!</p>}
             <p className="text-lg">Best: {Math.max(best, state === "over" ? score : 0)}</p>
-            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot. Take down as many moving dummies as you can in {ROUND_TIME}s.</p>
+            <p className="max-w-md text-muted-foreground">WASD move · Space jump · Shift sprint · Mouse aim · Click shoot · Hold right-click to aim down the scope. Take down as many moving dummies as you can in {ROUND_TIME}s.</p>
             <button onClick={start} className="rounded-md bg-primary px-8 py-3 text-xl font-bold text-primary-foreground">
               {state === "over" ? "PLAY AGAIN" : "START"}
             </button>

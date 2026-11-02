@@ -173,9 +173,9 @@ function World({ onHit, playing, onAim }: { onHit: () => void; playing: boolean;
     const k = keys.current;
     camera.rotation.set(look.current.pitch, look.current.yaw, 0, "YXZ");
 
+    const cam = camera as THREE.PerspectiveCamera;
     const targetFov = aiming.current ? SCOPE_FOV : 75;
-    if (Math.abs(camera.fov - targetFov) > 0.01) {
-      const cam = camera as THREE.PerspectiveCamera;
+    if (Math.abs(cam.fov - targetFov) > 0.01) {
       cam.fov = THREE.MathUtils.lerp(cam.fov, targetFov, 1 - Math.exp(-14 * dt));
       cam.updateProjectionMatrix();
     }

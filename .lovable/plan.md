@@ -1,10 +1,10 @@
-# LUNO Shooter — Game Hub Plan
+# Mexican Standof — Game Hub Plan
 
-Turn the single desert range into a full game website: a hub with a Dungeon mode (waves of enemies, easy → hard) that pays out credits, an Armory to buy weapons, 3 maps, a Training mode to sharpen aim, and online co-op where one player creates a room, gets a code, and a friend joins with that code.
+Turn the single desert range into **Mexican Standof**, a full game website: a hub with a Dungeon mode (waves of enemies, easy → hard) that pays out credits, an Armory to buy weapons, 3 maps, a Training mode to sharpen aim, and online co-op where one player creates a room, gets a code, and a friend joins with that code.
 
 ## What you'll get (pages)
 
-- **`/` — Hub**: hero with the game logo, big cards for Dungeon / Training / Co-op, credit balance in the header, links to the Armory and map showcase.
+- **`/` — Hub**: hero with the MEXICAN STANDOF logo, big cards for Dungeon / Training / Co-op, credit balance in the header, links to the Armory and map showcase.
 - **`/play` — Dungeon**: pick a map + difficulty, then fight waves that grow bigger and faster. Clearing a wave pays credits (Easy 5/wave, Normal 10, Hard 20). Die and the run ends; you keep the credits you earned.
 - **`/armory` — Weapons shop**: buy with credits. 5 weapons, each with damage / fire rate / mag / spread / price:
   1. Scout Pistol (free starter), 2. Vector SMG, 3. Riot Shotgun, 4. Marksman Rifle, 5. Longbow Sniper (uses the existing right-click scope).

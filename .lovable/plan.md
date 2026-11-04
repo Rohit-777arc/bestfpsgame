@@ -26,7 +26,7 @@ Turn the single desert range into **Mexican Standof**, a full game website: a hu
 6. **Maps**: lighting/ground/props presets — same engine, three moods.
 7. **Training mode**: reuse the engine with unlimited time and target-focused drills.
 8. **Co-op**: room codes over the realtime channel (position/heading at ~8 Hz, hits and wave events as instant messages); shared wave state so you fight together; verified with two browser clients before handing over.
-9. **Hub pages, guest/account flow, polish, final two-client + playtest check.**
+9. **Hub pages, guest/account flow, polish, final two-client + playtest check.** The in-game menu title changes from DUST RANGE to MEXICAN STANDOF everywhere (menu, HUD, browser tab).
 
 ## Technical notes
 

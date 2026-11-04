@@ -32,7 +32,7 @@ Turn the single desert range into a full game website: a hub with a Dungeon mode
 
 - Routes under `src/routes/` (TanStack Start); game stays `ssr: false` — three.js never runs on the server.
 - Game logic in plain TypeScript modules with no React/three imports, unit-tested with vitest (wave payout math, weapon stats, wave scaling).
-- Realtime co-op is client-authoritative casual play: fine for friends sharing a code, not anti-cheat proof. Rooms cap at 8 players; tick kept under the message budget.
+- Realtime co-op is client-authoritative casual play: fine for friends sharing a code, not anti-cheat proof. Rooms cap at 8 players; the network tick is kept under the project message budget.
 - Every page gets its own title/description metadata.
 
 ## What I can't check here

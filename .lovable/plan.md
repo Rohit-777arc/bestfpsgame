@@ -31,6 +31,8 @@ Turn the single desert range into a full game website: a hub with a Dungeon mode
 ## Technical notes
 
 - Routes under `src/routes/` (TanStack Start); game stays `ssr: false` — three.js never runs on the server.
+- **GUI in the style of Roblox Rivals** — bold blocky shooter HUD and menus: big health / ammo / credits counters, a killfeed, weapon loadout cards, and chunky mode-select cards on the hub — all applied to this game's own idea, modes, maps and credits economy.
+- **No errors left behind**: every build is checked clean, and each finished mode is play-tested in the running game before it counts as done.
 - Game logic in plain TypeScript modules with no React/three imports, unit-tested with vitest (wave payout math, weapon stats, wave scaling).
 - Realtime co-op is client-authoritative casual play: fine for friends sharing a code, not anti-cheat proof. Rooms cap at 8 players; the network tick is kept under the project message budget.
 - Every page gets its own title/description metadata.

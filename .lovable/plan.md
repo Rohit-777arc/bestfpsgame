@@ -9,7 +9,7 @@ Turn the single desert range into **Mexican Standof**, a full game website: a hu
 - **`/armory` — Weapons shop**: buy with credits. 5 weapons, each with damage / fire rate / mag / spread / price:
   1. Scout Pistol (free starter), 2. Vector SMG, 3. Riot Shotgun, 4. Marksman Rifle, 5. Longbow Sniper (uses the existing right-click scope).
 - **`/train` — Training**: aim drills (pop-up targets, moving dummies) with a difficulty slider — pure practice, no credit risk.
-- **`/co-op` — Play with a friend**: "Create room" shows a 4-letter code; your friend enters it (or opens your share link) and you spawn in the same map fighting the same waves.
+- **`/co-op` — Play with a friend**: "Create room" shows a 4-letter code; your friend enters it (or opens your share link) and you spawn in the same map fighting the same waves. You can also flip the room into a **1v1 duel** and fight each other.
 - **Maps (3)**: Desert Dunes (current look), Neon Night (dark city, glowing signs), Frozen Base (snow, cold blue light). Pickable in every mode.
 
 ## How progress works

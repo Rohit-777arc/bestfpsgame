@@ -14,7 +14,97 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profile_weapons: {
+        Row: {
+          acquired_at: string
+          user_id: string
+          weapon_id: string
+        }
+        Insert: {
+          acquired_at?: string
+          user_id: string
+          weapon_id: string
+        }
+        Update: {
+          acquired_at?: string
+          user_id?: string
+          weapon_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_weapons_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          credits: number
+          display_name: string
+          equipped_weapon: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          credits?: number
+          display_name?: string
+          equipped_weapon?: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          credits?: number
+          display_name?: string
+          equipped_weapon?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      runs: {
+        Row: {
+          created_at: string
+          credits_earned: number
+          difficulty: string
+          id: string
+          map: string
+          mode: string
+          user_id: string
+          waves_cleared: number
+        }
+        Insert: {
+          created_at?: string
+          credits_earned?: number
+          difficulty: string
+          id?: string
+          map: string
+          mode?: string
+          user_id: string
+          waves_cleared?: number
+        }
+        Update: {
+          created_at?: string
+          credits_earned?: number
+          difficulty?: string
+          id?: string
+          map?: string
+          mode?: string
+          user_id?: string
+          waves_cleared?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "runs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

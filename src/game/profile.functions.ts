@@ -45,9 +45,19 @@ export const awardWaveCredits = createServerFn({ method: "POST" })
       if (error) throw new Error("Could not start run");
       runId = run.id;
     } else {
+      const { data: run, error: runErr } = await supabase
+        .from("runs")
+        .select("waves_cleared, credits_earned")
+        .eq("id", runId)
+        .eq("user_id", userId)
+        .single();
+      if (runErr || !run) throw new Error("Run not found");
       const { error } = await supabase
         .from("runs")
-        .update({ waves_cleared: data.wave, credits_earned: supabaseNoop() + payout })
+        .update({
+          waves_cleared: Math.max(run.waves_cleared, data.wave),
+          credits_earned: run.credits_earned + payout,
+        })
         .eq("id", runId)
         .eq("user_id", userId);
       if (error) throw new Error("Could not update run");
@@ -70,10 +80,6 @@ export const awardWaveCredits = createServerFn({ method: "POST" })
 
     return { credits: updated.credits, runId, awarded: payout };
   });
-
-function supabaseNoop() {
-  return 0;
-}
 
 const purchaseInput = z.object({ weaponId: z.string() });
 

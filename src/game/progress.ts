@@ -133,19 +133,24 @@ async function maybeImportGuest() {
   }
 }
 
-/** Credits earned for clearing one dungeon wave. Returns the amount paid. */
-export async function awardWave(map: MapId, difficulty: Difficulty): Promise<number> {
+/** Credits earned for clearing one dungeon wave. Returns the amount paid and the run id. */
+export async function awardWave(
+  map: MapId,
+  difficulty: Difficulty,
+  wave: number,
+  runId: string | null,
+): Promise<{ awarded: number; runId: string | null }> {
   const payout = waveCredits(difficulty);
   if (state.kind === "account") {
-    const res = await awardWaveCredits({ data: { map, difficulty, wave: 1, runId: null } });
+    const res = await awardWaveCredits({ data: { map, difficulty, wave, runId } });
     state = { ...state, credits: res.credits };
     notify();
-    return payout;
+    return { awarded: payout, runId: res.runId };
   }
   state = { ...state, credits: state.credits + payout };
   saveGuest(state);
   notify();
-  return payout;
+  return { awarded: payout, runId: null };
 }
 
 export async function buyWeapon(id: WeaponId): Promise<void> {

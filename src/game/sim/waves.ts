@@ -110,3 +110,36 @@ export function scaledTier(diff: Difficulty, tier: Tier): TierDef {
     damage: Math.max(1, Math.round(t.damage * d.dmgMul)),
   };
 }
+
+// ---- Seeded spawns (keeps co-op waves identical on every client) ----
+
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export const ARENA = 40;
+
+export interface EnemySpawn {
+  id: number;
+  tier: Tier;
+  x: number;
+  z: number;
+}
+
+/** Deterministic spawn positions and tier mix for one wave. */
+export function spawnPlan(diff: Difficulty, wave: number, seed: number): EnemySpawn[] {
+  const mix = tierMixForWave(diff, wave);
+  const rnd = mulberry32(seed);
+  return mix.map((tier, i) => {
+    const a = rnd() * Math.PI * 2;
+    const r = 14 + rnd() * 22;
+    return { id: i, tier, x: Math.cos(a) * r, z: Math.sin(a) * r };
+  });
+}

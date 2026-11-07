@@ -1,4 +1,5 @@
 // Draws the arena for a map preset: sky, fog, lights, ground, walls, props.
+import { useMemo } from "react";
 import { Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import type { MapDef } from "@/game/sim/maps";
@@ -111,5 +112,3 @@ export function Scene({ map }: { map: MapDef }) {
   );
 }
 
-// three's useMemo comes from React — imported below to keep this file's JSX tidy
-import { useMemo } from "react";

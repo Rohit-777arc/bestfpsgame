@@ -16,12 +16,18 @@ export type NetState = {
   weapon: string;
 };
 
+export type RoomMode = "coop" | "duel";
+
 export type NetEvent =
-  | { type: "kill"; from: string; name: string; tier: string }
-  | { type: "duelhit"; from: string; to: string; score: number }
+  | { type: "kill"; from: string; name: string; enemyId: number; wave: number; tier: string }
   | { type: "wave"; from: string; wave: number; seed: number }
-  | { type: "duelwin"; from: string; name: string }
+  | { type: "duelhit"; from: string; to: string; dmg: number }
+  | { type: "frag"; from: string; killer: string; killerName: string; victimName: string }
+  | { type: "lobby"; from: string; map: string; mode: RoomMode }
+  | { type: "start"; from: string; map: string; mode: RoomMode }
   | { type: "restart"; from: string };
+
+export type RosterEntry = { id: string; name: string };
 
 let cachedId: string | null = null;
 export function playerId(): string {
@@ -35,28 +41,22 @@ export function playerId(): string {
   return cachedId;
 }
 
-/** Room code from the URL (?room=CODE); makes one up and rewrites the URL if absent. */
-export function roomCodeFromUrl(): string {
-  const url = new URL(window.location.href);
-  const existing = url.searchParams.get("room");
-  if (existing) return existing.toUpperCase();
-  const code = Math.random().toString(36).slice(2, 6).toUpperCase();
-  url.searchParams.set("room", code);
-  window.history.replaceState(null, "", url);
-  return code;
+export function makeRoomCode(): string {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  let s = "";
+  for (let i = 0; i < 4; i++) s += letters[Math.floor(Math.random() * letters.length)];
+  return s;
 }
 
-export function createRoomCode(): string {
-  const code = Math.random().toString(36).slice(2, 6).toUpperCase();
-  const url = new URL(window.location.href);
-  url.searchParams.set("room", code);
-  window.history.replaceState(null, "", url);
-  return code;
-}
+/** Listeners the game installs; the room component forwards to them. */
+export type NetBus = {
+  onState?: (s: NetState) => void;
+  onEvent?: (e: NetEvent) => void;
+};
 
 type Handlers = {
   onState: (s: NetState) => void;
-  onRoster: (roster: { id: string; name: string }[]) => void;
+  onRoster: (roster: RosterEntry[]) => void;
   onEvent: (e: NetEvent) => void;
 };
 
@@ -70,6 +70,7 @@ export function useGameChannel(roomCode: string, name: string, handlers: Handler
   h.current = handlers;
 
   useEffect(() => {
+    if (!roomCode) return;
     const channel = supabase.channel(`mso:${roomCode}`, {
       config: { broadcast: { self: false }, presence: { key: playerId() } },
     });
@@ -97,7 +98,8 @@ export function useGameChannel(roomCode: string, name: string, handlers: Handler
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-    // handlers flow through h — only the room identity may re-run this effect
+    // name is captured at subscribe time; only the room identity re-runs this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode]);
 
   return channelRef;
@@ -114,5 +116,5 @@ export function sendEvent(channel: RealtimeChannel | null, e: NetEvent) {
 /** The lexicographically smallest id in a roster owns wave progression. */
 export function isCoordinator(roster: { id: string }[]): boolean {
   const ids = roster.map((p) => p.id).sort();
-  return ids[0] === playerId();
+  return ids.length === 0 || ids[0] === playerId();
 }

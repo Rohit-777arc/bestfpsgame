@@ -29,7 +29,7 @@ export interface Progress {
   credits: number;
   weapons: WeaponId[];
   equipped: WeaponId;
-  email?: string;
+  email?: string | undefined;
 }
 
 type Listener = (p: Progress) => void;

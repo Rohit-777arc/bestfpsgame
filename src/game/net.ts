@@ -50,8 +50,8 @@ export function makeRoomCode(): string {
 
 /** Listeners the game installs; the room component forwards to them. */
 export type NetBus = {
-  onState?: (s: NetState) => void;
-  onEvent?: (e: NetEvent) => void;
+  onState?: ((s: NetState) => void) | undefined;
+  onEvent?: ((e: NetEvent) => void) | undefined;
 };
 
 type Handlers = {

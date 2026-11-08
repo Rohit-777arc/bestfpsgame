@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { isWeaponId, WEAPONS } from "./sim/weapons";
+import { isWeaponId, STARTER_WEAPON, WEAPONS } from "./sim/weapons";
 import { waveCredits } from "./sim/waves";
 
 export const getProfile = createServerFn({ method: "GET" })

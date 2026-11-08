@@ -900,7 +900,7 @@ export function Arena(props: ArenaProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-background" data-scene-ready="1">
+    <div className="fixed inset-0 z-40 bg-background" data-scene-ready="1">
       <Canvas
         shadows
         gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: map.night ? 1.25 : 1.05 }}

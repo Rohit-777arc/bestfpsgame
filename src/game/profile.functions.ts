@@ -134,6 +134,15 @@ export const equipWeapon = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     if (!isWeaponId(data.weaponId)) throw new Error("Unknown weapon");
+    if (data.weaponId !== STARTER_WEAPON) {
+      const { data: owned } = await supabase
+        .from("profile_weapons")
+        .select("weapon_id")
+        .eq("user_id", userId)
+        .eq("weapon_id", data.weaponId)
+        .maybeSingle();
+      if (!owned) throw new Error("You don't own that weapon");
+    }
     const { error } = await supabase
       .from("profiles")
       .update({ equipped_weapon: data.weaponId })

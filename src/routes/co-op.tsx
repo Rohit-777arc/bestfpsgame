@@ -7,7 +7,6 @@ import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
 import { awardWave } from "@/game/progress";
 import {
-  isCoordinator,
   makeRoomCode,
   playerId,
   sendEvent,
@@ -47,15 +46,17 @@ function CoopPage() {
   const [copied, setCopied] = useState(false);
   const bus = useRef<NetBus>({});
   const runId = useRef<string | null>(null);
+  const createdRef = useRef(false);
 
-  const host = isCoordinator(roster);
+  const [created, setCreated] = useState(false);
+  const host = created;
 
   const channelRef = useGameChannel(code, p.name, {
     onState: (s) => bus.current.onState?.(s),
     onRoster: (r) => {
       setRoster(r);
       // re-announce lobby so newcomers see the host's picks
-      if (isCoordinator(r)) sendEvent(channelRef.current, { type: "lobby", from: playerId(), map, mode });
+      if (createdRef.current) sendEvent(channelRef.current, { type: "lobby", from: playerId(), map, mode });
     },
     onEvent: (e) => {
       if (e.type === "lobby") {
@@ -80,6 +81,8 @@ function CoopPage() {
   const leave = () => {
     setPlaying(false);
     setCode("");
+    createdRef.current = false;
+    setCreated(false);
     setRoster([]);
     window.history.replaceState(null, "", "/co-op");
   };
@@ -117,7 +120,7 @@ function CoopPage() {
             <section className="mso-card p-6">
               <h3 className="mso-display mb-2 text-2xl">CREATE ROOM</h3>
               <p className="mb-4 text-muted-foreground">Get a 4-letter code and send it to your friend.</p>
-              <button type="button" className="mso-btn text-xl" onClick={() => setCode(makeRoomCode())}>
+              <button type="button" className="mso-btn text-xl" onClick={() => { createdRef.current = true; setCreated(true); setCode(makeRoomCode()); }}>
                 CREATE ▸
               </button>
             </section>

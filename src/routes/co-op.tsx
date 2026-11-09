@@ -104,7 +104,7 @@ function CoopPage() {
                 runId.current = res.runId;
                 return res.awarded;
               }
-            : undefined
+            : () => 0
         }
         onExit={() => setPlaying(false)}
       />

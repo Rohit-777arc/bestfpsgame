@@ -10,7 +10,7 @@ Approved plan: .lovable/plan/mexican-standof-game-hub-plan-2026-11-04.md
 - [x] 6. Armory shop (buy/equip, guest + account paths)
 - [x] 7. Maps: Desert Dunes, Neon Night, Frozen Base presets
 - [x] 8. Training mode (aim drills, difficulty slider)
-- [ ] 9. Co-op rooms: six-character code with two randomly positioned digits, shared dungeon, 1v1 duel
+- [x] 9. Co-op rooms: six-character code with two randomly positioned digits, shared dungeon, 1v1 duel
 - [x] 10. Hub pages /, /play, /armory, /train, /co-op + auth/guest prompt + Rivals-style GUI
 - [x] 11. Rename DUST RANGE → MEXICAN STANDOF everywhere
 - [x] 12. Verify: tests, build clean, browser playtest, two-client co-op check

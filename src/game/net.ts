@@ -4,6 +4,9 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { makeRoomCode } from "@/game/room-code";
+
+export { makeRoomCode };
 
 export type NetState = {
   id: string;
@@ -39,13 +42,6 @@ export function playerId(): string {
     }
   }
   return cachedId;
-}
-
-export function makeRoomCode(): string {
-  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  let s = "";
-  for (let i = 0; i < 4; i++) s += letters[Math.floor(Math.random() * letters.length)];
-  return s;
 }
 
 /** Listeners the game installs; the room component forwards to them. */

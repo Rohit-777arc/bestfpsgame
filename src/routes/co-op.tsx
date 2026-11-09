@@ -5,6 +5,7 @@ import { MAP_SWATCH, PageShell, Picker } from "@/components/game/Picker";
 import { useProgress } from "@/components/game/useProgress";
 import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
+import { isRoomCode } from "@/game/room-code";
 import { awardWave } from "@/game/progress";
 import {
   makeRoomCode,
@@ -21,9 +22,9 @@ export const Route = createFileRoute("/co-op")({
   head: () => ({
     meta: [
       { title: "Co-op & 1v1 Rooms — Mexican Standof" },
-      { name: "description", content: "Create a room, share the 4-letter code, and team up against waves or duel your friend 1v1." },
+      { name: "description", content: "Create a room, share its six-character code, and team up against waves or duel your friend 1v1." },
       { property: "og:title", content: "Co-op & 1v1 Rooms — Mexican Standof" },
-      { property: "og:description", content: "Share a room code and play with a friend: co-op waves or a 1v1 duel." },
+      { property: "og:description", content: "Share a six-character room code and play with a friend: co-op waves or a 1v1 duel." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -36,7 +37,7 @@ function CoopPage() {
   const [code, setCode] = useState(() => {
     if (typeof window === "undefined") return "";
     const c = new URLSearchParams(window.location.search).get("room");
-    return c && /^[A-Z]{4}$/i.test(c) ? c.toUpperCase() : "";
+    return c && isRoomCode(c) ? c.toUpperCase() : "";
   });
   const [joinInput, setJoinInput] = useState("");
   const [roster, setRoster] = useState<RosterEntry[]>([]);
@@ -119,7 +120,7 @@ function CoopPage() {
           <div className="grid gap-6 sm:grid-cols-2">
             <section className="mso-card p-6">
               <h3 className="mso-display mb-2 text-2xl">CREATE ROOM</h3>
-              <p className="mb-4 text-muted-foreground">Get a 4-letter code and send it to your friend.</p>
+              <p className="mb-4 text-muted-foreground">Get a six-character code with two numbers and send it to your friend.</p>
               <button type="button" className="mso-btn text-xl" onClick={() => { createdRef.current = true; setCreated(true); setCode(makeRoomCode()); }}>
                 CREATE ▸
               </button>
@@ -130,17 +131,17 @@ function CoopPage() {
                 className="flex gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (/^[A-Z]{4}$/.test(joinInput)) setCode(joinInput);
+                  if (isRoomCode(joinInput)) setCode(joinInput);
                 }}
               >
                 <input
                   aria-label="Room code"
                   value={joinInput}
-                  onChange={(e) => setJoinInput(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-                  placeholder="ABCD"
+                  onChange={(e) => setJoinInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                  placeholder="A1B2CD"
                   className="mso-display w-40 rounded-lg border-[3px] border-[var(--mso-ink)] bg-background px-3 py-2 text-2xl tracking-widest"
                 />
-                <button type="submit" className="mso-btn text-xl" disabled={joinInput.length !== 4}>
+                <button type="submit" className="mso-btn text-xl" disabled={!isRoomCode(joinInput)}>
                   JOIN
                 </button>
               </form>

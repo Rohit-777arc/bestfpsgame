@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ArmoryRouteImport } from './routes/armory'
+import { Route as CoOpRouteImport } from './routes/co-op'
 import { Route as MapsRouteImport } from './routes/maps'
 import { Route as PlayRouteImport } from './routes/play'
 import { Route as TrainRouteImport } from './routes/train'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const ArmoryRoute = ArmoryRouteImport.update({
   id: '/armory',
   path: '/armory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CoOpRoute = CoOpRouteImport.update({
+  id: '/co-op',
+  path: '/co-op',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapsRoute = MapsRouteImport.update({
@@ -44,6 +50,7 @@ const TrainRoute = TrainRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/armory': typeof ArmoryRoute
+  '/co-op': typeof CoOpRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
   '/train': typeof TrainRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/armory': typeof ArmoryRoute
+  '/co-op': typeof CoOpRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
   '/train': typeof TrainRoute
@@ -59,21 +67,23 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/armory': typeof ArmoryRoute
+  '/co-op': typeof CoOpRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
   '/train': typeof TrainRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/armory' | '/maps' | '/play' | '/train'
+  fullPaths: '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/train'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/armory' | '/maps' | '/play' | '/train'
-  id: '__root__' | '/' | '/armory' | '/maps' | '/play' | '/train'
+  to: '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/train'
+  id: '__root__' | '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/train'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ArmoryRoute: typeof ArmoryRoute
+  CoOpRoute: typeof CoOpRoute
   MapsRoute: typeof MapsRoute
   PlayRoute: typeof PlayRoute
   TrainRoute: typeof TrainRoute
@@ -93,6 +103,13 @@ declare module '@tanstack/react-router' {
       path: '/armory'
       fullPath: '/armory'
       preLoaderRoute: typeof ArmoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/co-op': {
+      id: '/co-op'
+      path: '/co-op'
+      fullPath: '/co-op'
+      preLoaderRoute: typeof CoOpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/maps': {
@@ -122,6 +139,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ArmoryRoute: ArmoryRoute,
+  CoOpRoute: CoOpRoute,
   MapsRoute: MapsRoute,
   PlayRoute: PlayRoute,
   TrainRoute: TrainRoute,

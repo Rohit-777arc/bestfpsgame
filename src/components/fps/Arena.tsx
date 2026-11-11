@@ -8,9 +8,10 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { MAPS, type MapId } from "@/game/sim/maps";
 import { ARENA, CRATES } from "@/game/sim/arena";
 import { WEAPONS, shotInterval, type WeaponId } from "@/game/sim/weapons";
-import { scaledTier, spawnPlan, type Difficulty } from "@/game/sim/waves";
+import { enemyBehaviorForWave, scaledTier, spawnPlan, type Difficulty } from "@/game/sim/waves";
 import { Scene } from "./Scene";
 import { EnemyMesh, RemoteMesh, type EnemyRuntime, type RemoteRuntime } from "./Actors";
+import { TouchControls, type TouchInput } from "./TouchControls";
 import {
   isCoordinator,
   playerId,
@@ -123,6 +124,8 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
 
   const keys = useRef<Record<string, boolean>>({});
   const look = useRef({ yaw: 0, pitch: 0 });
+  const touchMode = useRef(false);
+  const touch = useRef<TouchInput>({ moveX: 0, moveY: 0, lookDX: 0, lookDY: 0, firing: false, jump: false, aiming: false });
   const vy = useRef(0);
   const firing = useRef(false);
   const aiming = useRef(false);
@@ -200,6 +203,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     (id: number, tier: EnemyRuntime["tier"], x: number, z: number): EnemyRuntime => {
       const s = scaledTier(difficulty, tier);
       const trainSpeed = 0.8 + (props.trainLevel ?? 1) * 0.9;
+      const behavior = enemyBehaviorForWave(mode === "coop" || mode === "dungeon" ? wave.current : 1);
       return {
         id,
         tier,
@@ -212,6 +216,10 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         damage: s.damage,
         reach: s.reach,
         cd: 1,
+        attackCd: 1 + Math.random() * 1.2,
+        aimError: behavior.aimError,
+        attackInterval: behavior.attackInterval,
+        strafe: behavior.strafe,
         alive: true,
         fall: 0,
         phase: Math.random() * 6,
@@ -261,7 +269,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     timeLeft.current = TRAIN_TIME;
     duelScore.current = {};
     respawn();
-    api.patch({ ...initialHud(weapon.mag), locked: true });
+    api.patch({ ...initialHud(weapon.mag), locked: touchMode.current });
     if (mode === "train") startTraining();
     else if (mode === "dungeon") startWave(1, Math.floor(Math.random() * 1e9));
     else if (mode === "coop") {
@@ -284,6 +292,10 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   }, [api, mode, respawn, startTraining, startWave, weapon.mag]);
 
   props.startRef.current = begin;
+
+  useEffect(() => {
+    touchMode.current = window.matchMedia("(pointer: coarse)").matches;
+  }, []);
 
   useEffect(() => {
     camera.rotation.order = "YXZ";
@@ -396,6 +408,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     };
     const ku = (e: KeyboardEvent) => (keys.current[e.code] = false);
     const mm = (e: MouseEvent) => {
+      if (touchMode.current) return;
       if (document.pointerLockElement !== el) return;
       const s = SENS * (aiming.current ? 0.35 : 1);
       look.current.yaw -= e.movementX * s;
@@ -403,6 +416,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     };
     const md = (e: MouseEvent) => {
       if (over.current) return;
+      if (touchMode.current) return;
       if (document.pointerLockElement !== el) {
         el.requestPointerLock?.();
         return;
@@ -422,7 +436,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     };
     const plc = () => {
       const locked = document.pointerLockElement === el;
-      if (!locked) {
+      if (!locked && !touchMode.current) {
         firing.current = false;
         if (aiming.current) {
           aiming.current = false;
@@ -430,7 +444,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         }
         keys.current = {};
       }
-      api.patch({ locked });
+      if (!touchMode.current) api.patch({ locked });
     };
     const noCtx = (e: Event) => e.preventDefault();
     addEventListener("keydown", kd);
@@ -561,7 +575,10 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     }
     if (landed) hits.current++;
     api.patch({ ammo: ammo.current, shots: shots.current, hits: hits.current, ...(landed ? { hitMark: Date.now() } : {}) });
-    if (!weapon.auto) firing.current = false;
+    if (!weapon.auto) {
+      firing.current = false;
+      touch.current.firing = false;
+    }
     if (ammo.current <= 0) startReload();
   }
 
@@ -585,6 +602,15 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     const k = keys.current;
     const live = !props.paused && !over.current;
 
+    if (touchMode.current) {
+      look.current.yaw -= touch.current.lookDX * SENS * 1.45;
+      look.current.pitch = THREE.MathUtils.clamp(look.current.pitch - touch.current.lookDY * SENS * 1.45, -1.5, 1.5);
+      touch.current.lookDX = 0;
+      touch.current.lookDY = 0;
+      aiming.current = touch.current.aiming;
+      firing.current = touch.current.firing;
+    }
+
     camera.rotation.set(look.current.pitch, look.current.yaw, 0, "YXZ");
     const targetFov = aiming.current ? SCOPE_FOV : 75;
     if (Math.abs(cam.fov - targetFov) > 0.01) {
@@ -607,12 +633,16 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
       if (k.KeyS) move.sub(fwd);
       if (k.KeyD) move.add(right);
       if (k.KeyA) move.sub(right);
+      if (touchMode.current) {
+        move.addScaledVector(fwd, touch.current.moveY);
+        move.addScaledVector(right, touch.current.moveX);
+      }
     }
     const feetY = camera.position.y - EYE;
     const under = CRATES.find((c) => Math.abs(camera.position.x - c.x) < c.s / 2 + 0.3 && Math.abs(camera.position.z - c.z) < c.s / 2 + 0.3);
     const floor = under && feetY >= under.s - 0.5 ? under.s : 0;
     const grounded = feetY <= floor + 0.001;
-    if (live && !dead.current && k.Space && grounded) vy.current = JUMP_V;
+    if (live && !dead.current && (k.Space || (touchMode.current && touch.current.jump)) && grounded) vy.current = JUMP_V;
     vy.current -= GRAVITY * dt;
     camera.position.y += vy.current * dt;
     if (camera.position.y - EYE < floor) {
@@ -686,6 +716,55 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
       const dz = gz - e.z;
       const dist = Math.hypot(dx, dz);
       e.cd -= dt;
+      e.attackCd -= dt;
+      if ((mode === "dungeon" || mode === "coop") && !dead.current) {
+        const shotDx = me.x - e.x;
+        const shotDz = me.z - e.z;
+        const shotDistance = Math.hypot(shotDx, shotDz);
+        if (shotDistance > 2.5 && shotDistance < 28 && e.attackCd <= 0) {
+          e.attackCd = e.attackInterval;
+          e.ry = Math.atan2(shotDx, shotDz);
+          const origin = new THREE.Vector3(e.x, 1.4, e.z);
+          const target = new THREE.Vector3(me.x, me.y - 0.12, me.z);
+          const distance = origin.distanceTo(target);
+          const direction = target.sub(origin).normalize();
+          const error = e.aimError;
+          direction.x += (Math.random() - 0.5) * error;
+          direction.y += (Math.random() - 0.5) * error * 0.65;
+          direction.z += (Math.random() - 0.5) * error;
+          direction.normalize();
+          ray.set(origin, direction);
+          ray.far = distance;
+          const cover = ray.intersectObjects(scene.children, true).some((hit) => hit.object.userData.solid && hit.distance < distance - 0.25);
+          const along = target.clone().sub(origin).dot(direction);
+          const closest = origin.clone().addScaledVector(direction, along);
+          const hitPlayer = !cover && along > 0 && along <= distance + 0.4 && closest.distanceTo(target.clone().add(origin)) < 0.75;
+          const tracer = new THREE.Mesh(bulletGeo, bulletMat);
+          tracer.position.copy(origin);
+          const endpoint = origin.clone().addScaledVector(direction, Math.min(distance, 32));
+          tracer.lookAt(endpoint);
+          const travel = endpoint.distanceTo(origin);
+          fx.current?.add(tracer);
+          tracers.current.push({ m: tracer, dir: direction.clone(), left: travel });
+          if (hitPlayer && !dead.current) {
+            hp.current = Math.max(0, hp.current - e.damage);
+            api.patch({ hp: hp.current, hurt: Date.now() });
+            if (hp.current <= 0) {
+              dead.current = true;
+              if (mode === "dungeon") {
+                over.current = true;
+                document.exitPointerLock?.();
+                api.patch((h) => ({
+                  over: { title: "YOU DIED", lines: [`Reached wave ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`] },
+                }));
+              } else {
+                respawnAt.current = clock.current + 5;
+                api.patch({ banner: "DOWNED", sub: "Back in 5s" });
+              }
+            }
+          }
+        }
+      }
       if (chasing && dist < e.reach) {
         e.moving = false;
         e.ry = Math.atan2(dx, dz);
@@ -717,9 +796,19 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         e.goalZ = (Math.random() - 0.5) * ARENA * 1.6;
         continue;
       }
+      let moveX = dx;
+      let moveZ = dz;
+      if (chasing && (mode === "dungeon" || mode === "coop") && dist > 0.01) {
+        const preferred = e.tier === "brute" ? 8 : e.tier === "runner" ? 12 : 10;
+        const radial = THREE.MathUtils.clamp((dist - preferred) / Math.max(dist, 1), -0.7, 1);
+        const side = Math.sin(clock.current * 0.9 + e.phase) * e.strafe;
+        moveX = dx * radial - (dz / dist) * side;
+        moveZ = dz * radial + (dx / dist) * side;
+      }
+      const moveLength = Math.max(0.001, Math.hypot(moveX, moveZ));
       const step = e.speed * dt;
-      const nx = e.x + (dx / dist) * step;
-      const nz = e.z + (dz / dist) * step;
+      const nx = e.x + (moveX / moveLength) * step;
+      const nz = e.z + (moveZ / moveLength) * step;
       const hitX = blocked(nx, e.z, 0, 0.45);
       const hitZ = blocked(e.x, nz, 0, 0.45);
       if (!hitX) e.x = nx;

@@ -111,6 +111,25 @@ export function scaledTier(diff: Difficulty, tier: Tier): TierDef {
   };
 }
 
+export interface EnemyWaveBehavior {
+  /** Maximum angular error, in radians, when an enemy aims. */
+  aimError: number;
+  /** Seconds between ranged attacks. */
+  attackInterval: number;
+  /** How strongly enemies circle while holding a firing distance. */
+  strafe: number;
+}
+
+/** Bounded, deterministic combat progression shared by every enemy tier. */
+export function enemyBehaviorForWave(wave: number): EnemyWaveBehavior {
+  const progress = Math.min(1, Math.max(0, (Math.max(1, wave) - 1) / 10));
+  return {
+    aimError: 0.18 - progress * 0.14,
+    attackInterval: 2.2 - progress * 1.1,
+    strafe: 0.18 + progress * 0.62,
+  };
+}
+
 // ---- Seeded spawns (keeps co-op waves identical on every client) ----
 
 export function mulberry32(seed: number): () => number {

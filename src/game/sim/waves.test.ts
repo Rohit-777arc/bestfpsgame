@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DIFFICULTIES,
+  enemyBehaviorForWave,
   enemyCountForWave,
   runCredits,
   scaledTier,
@@ -60,5 +61,22 @@ describe("difficulty scaling", () => {
   });
   it("hard enemies have more health than easy ones", () => {
     expect(scaledTier("hard", "grunt").hp).toBeGreaterThan(scaledTier("easy", "grunt").hp);
+  });
+});
+
+describe("enemy combat progression", () => {
+  it("makes enemies more accurate and faster between early dungeon waves", () => {
+    const early = enemyBehaviorForWave(1);
+    const later = enemyBehaviorForWave(6);
+    expect(later.aimError).toBeLessThan(early.aimError);
+    expect(later.attackInterval).toBeLessThan(early.attackInterval);
+    expect(later.strafe).toBeGreaterThan(early.strafe);
+  });
+
+  it("keeps late-wave behavior within the same fair upper bounds", () => {
+    expect(enemyBehaviorForWave(100)).toEqual(enemyBehaviorForWave(11));
+    expect(enemyBehaviorForWave(1).aimError).toBeLessThanOrEqual(0.18);
+    expect(enemyBehaviorForWave(100).attackInterval).toBeGreaterThanOrEqual(1.1);
+    expect(enemyBehaviorForWave(100).strafe).toBeLessThanOrEqual(0.8);
   });
 });

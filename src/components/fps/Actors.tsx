@@ -16,6 +16,10 @@ export type EnemyRuntime = {
   damage: number;
   reach: number;
   cd: number;
+  attackCd: number;
+  aimError: number;
+  attackInterval: number;
+  strafe: number;
   alive: boolean;
   fall: number;
   phase: number;
@@ -48,6 +52,20 @@ export const TIER_LOOK: Record<Tier, { cloth: THREE.MeshStandardMaterial; scale:
 
 const hitMat = new THREE.MeshStandardMaterial({ color: "#ffffff", emissive: "#ffffff", emissiveIntensity: 1 });
 
+function syncHitFlash(root: THREE.Group, active: boolean) {
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (active) {
+      if (!mesh.userData.baseMat) mesh.userData.baseMat = mesh.material;
+      mesh.material = hitMat;
+    } else if (mesh.userData.baseMat) {
+      mesh.material = mesh.userData.baseMat as THREE.Material;
+      delete mesh.userData.baseMat;
+    }
+  });
+}
+
 type Tag = Record<string, unknown>;
 
 function Body({ tag, cloth, refs }: {
@@ -73,6 +91,20 @@ function Body({ tag, cloth, refs }: {
       <group ref={refs.rArm} position={[0.38, 1.6, 0]}>{P(G.limb, cloth, [0, -0.32, 0])}</group>
       <group ref={refs.lLeg} position={[-0.14, 0.95, 0]}>{P(G.leg, strap, [0, -0.45, 0])}</group>
       <group ref={refs.rLeg} position={[0.14, 0.95, 0]}>{P(G.leg, strap, [0, -0.45, 0])}</group>
+      <group position={[0.34, 1.37, 0.25]} rotation-x={-0.12}>
+        <mesh position={[0, 0, 0.12]} castShadow userData={tag}>
+          <boxGeometry args={[0.12, 0.12, 0.34]} />
+          <meshStandardMaterial color="#343a40" metalness={0.72} roughness={0.38} />
+        </mesh>
+        <mesh position={[0, 0.01, 0.36]} castShadow userData={tag}>
+          <cylinderGeometry args={[0.025, 0.025, 0.22, 8]} />
+          <meshStandardMaterial color="#17191b" metalness={0.82} roughness={0.25} />
+        </mesh>
+        <mesh position={[0, -0.11, 0.05]} rotation-x={0.28} castShadow userData={tag}>
+          <boxGeometry args={[0.08, 0.18, 0.09]} />
+          <meshStandardMaterial color="#66462d" roughness={0.82} />
+        </mesh>
+      </group>
     </>
   );
 }
@@ -103,6 +135,7 @@ export function EnemyMesh({ e }: { e: EnemyRuntime }) {
     const g = root.current;
     const b = body.current;
     if (!g || !b) return;
+    if (!e.alive) syncHitFlash(b, false);
     g.position.set(e.x, 0, e.z);
     g.rotation.y = e.ry;
     if (!e.alive) {
@@ -119,17 +152,7 @@ export function EnemyMesh({ e }: { e: EnemyRuntime }) {
     b.position.y = e.moving ? Math.abs(Math.cos(t)) * 0.05 : 0;
     if (limbs.rArm.current && e.cd > 0 && e.cd > 0.8) limbs.rArm.current.rotation.x = -1.6;
     // hit flash
-    const flash = e.flash > 0;
-    b.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
-      if (flash) {
-        if (!m.userData.baseMat) m.userData.baseMat = m.material;
-        m.material = hitMat;
-      } else if (m.userData.baseMat) {
-        m.material = m.userData.baseMat as THREE.Material;
-      }
-    });
+    syncHitFlash(b, e.flash > 0);
   });
 
   return (

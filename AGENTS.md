@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep FPS simulation rules in React/Three-free `src/game/sim` modules, with mutable frame state in refs and one shared game stepper, so gameplay stays testable and responsive.

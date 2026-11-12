@@ -12,6 +12,7 @@ export type TouchInput = {
 };
 
 type StickVisual = { x: number; y: number; dx: number; dy: number };
+type MoveVisual = { x: number; y: number };
 
 export function TouchControls({
   input,
@@ -26,6 +27,7 @@ export function TouchControls({
   const lookPointer = useRef<number | null>(null);
   const lastLook = useRef<{ x: number; y: number } | null>(null);
   const [lookStick, setLookStick] = useState<StickVisual | null>(null);
+  const [moveStick, setMoveStick] = useState<MoveVisual>({ x: 0, y: 0 });
 
   const updateMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -36,6 +38,7 @@ export function TouchControls({
     const scale = length > 1 ? 1 / length : 1;
     input.moveX = dx * scale;
     input.moveY = -dy * scale;
+    setMoveStick({ x: input.moveX * 30, y: -input.moveY * 30 });
   };
 
   const updateLook = (event: React.PointerEvent<HTMLDivElement>, rect: DOMRect) => {
@@ -82,16 +85,18 @@ export function TouchControls({
           movePointer.current = null;
           input.moveX = 0;
           input.moveY = 0;
+          setMoveStick({ x: 0, y: 0 });
         }}
         onPointerCancel={() => {
           movePointer.current = null;
           input.moveX = 0;
           input.moveY = 0;
+          setMoveStick({ x: 0, y: 0 });
         }}
       >
         <span
           className="pointer-events-none size-11 rounded-full border-2 border-primary bg-primary/35 shadow-md"
-          style={{ transform: `translate(${input.moveX * 30}px, ${-input.moveY * 30}px)` }}
+          style={{ transform: `translate(${moveStick.x}px, ${moveStick.y}px)` }}
         />
       </div>
 

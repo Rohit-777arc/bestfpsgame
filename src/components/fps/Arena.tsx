@@ -12,6 +12,7 @@ import { enemyBehaviorForWave, scaledTier, spawnPlan, type Difficulty } from "@/
 import { Scene } from "./Scene";
 import { EnemyMesh, RemoteMesh, type EnemyRuntime, type RemoteRuntime } from "./Actors";
 import { TouchControls, type TouchInput } from "./TouchControls";
+import { Button } from "@/components/ui/button";
 import {
   isCoordinator,
   playerId,
@@ -116,7 +117,7 @@ function blocked(x: number, z: number, feet: number, pad = 0.4) {
   return CRATES.some((c) => feet < c.s - 0.1 && Math.abs(x - c.x) < c.s / 2 + pad && Math.abs(z - c.z) < c.s / 2 + pad);
 }
 
-function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => void>; paused: boolean }) {
+function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => void>; resumeRef: MutableRefObject<() => void>; touchInput: MutableRefObject<TouchInput>; reloadRef: MutableRefObject<() => void>; paused: boolean }) {
   const { mode, difficulty, net, api } = props;
   const weapon = WEAPONS[props.weapon];
   const { camera, scene, gl } = useThree();
@@ -125,7 +126,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   const keys = useRef<Record<string, boolean>>({});
   const look = useRef({ yaw: 0, pitch: 0 });
   const touchMode = useRef(false);
-  const touch = useRef<TouchInput>({ moveX: 0, moveY: 0, lookDX: 0, lookDY: 0, firing: false, jump: false, aiming: false });
+  const touch = props.touchInput;
   const vy = useRef(0);
   const firing = useRef(false);
   const aiming = useRef(false);
@@ -293,8 +294,18 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
 
   props.startRef.current = begin;
 
+  props.resumeRef.current = () => {
+    if (touchMode.current) {
+      api.patch({ locked: true });
+      return;
+    }
+    const lockRequest = gl.domElement.requestPointerLock?.();
+    if (!lockRequest) api.patch({ locked: true });
+  };
+
   useEffect(() => {
     touchMode.current = window.matchMedia("(pointer: coarse)").matches;
+    if (touchMode.current) api.patch({ locked: true });
   }, []);
 
   useEffect(() => {
@@ -471,6 +482,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     reload.current = weapon.reloadTime;
     api.patch({ reloading: true });
   }
+  props.reloadRef.current = startReload;
 
   function addSpark(at: THREE.Vector3, hot: boolean) {
     const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: hot ? "#ff5a36" : "#fff1c4", transparent: true }));
@@ -727,7 +739,8 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
           const origin = new THREE.Vector3(e.x, 1.4, e.z);
           const target = new THREE.Vector3(me.x, me.y - 0.12, me.z);
           const distance = origin.distanceTo(target);
-          const direction = target.sub(origin).normalize();
+          const targetDelta = target.clone().sub(origin);
+          const direction = targetDelta.clone().normalize();
           const error = e.aimError;
           direction.x += (Math.random() - 0.5) * error;
           direction.y += (Math.random() - 0.5) * error * 0.65;
@@ -736,9 +749,9 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
           ray.set(origin, direction);
           ray.far = distance;
           const cover = ray.intersectObjects(scene.children, true).some((hit) => hit.object.userData.solid && hit.distance < distance - 0.25);
-          const along = target.clone().sub(origin).dot(direction);
+          const along = targetDelta.dot(direction);
           const closest = origin.clone().addScaledVector(direction, along);
-          const hitPlayer = !cover && along > 0 && along <= distance + 0.4 && closest.distanceTo(target.clone().add(origin)) < 0.75;
+          const hitPlayer = !cover && along > 0 && along <= distance + 0.4 && closest.distanceTo(target) < 0.75;
           const tracer = new THREE.Mesh(bulletGeo, bulletMat);
           tracer.position.copy(origin);
           const endpoint = origin.clone().addScaledVector(direction, Math.min(distance, 32));
@@ -770,7 +783,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         e.ry = Math.atan2(dx, dz);
         if (e.cd <= 0 && chasing.local && !dead.current && Math.abs(me.y - EYE) < 2.2) {
           e.cd = 1.1;
-          hp.current = Math.max(0, hp.current - e.damage);
+          hp.current = Math.max(0, hp.current - Math.max(2, Math.round(e.damage * 0.55)));
           api.patch({ hp: hp.current, hurt: Date.now() });
           if (hp.current <= 0) {
             dead.current = true;
@@ -962,6 +975,9 @@ export function Arena(props: ArenaProps) {
   const [hud, setHud] = useState<Hud>(() => initialHud(weapon.mag));
   const feedId = useRef(0);
   const startRef = useRef<() => void>(() => {});
+  const resumeRef = useRef<() => void>(() => {});
+  const reloadRef = useRef<() => void>(() => {});
+  const touchInput = useRef<TouchInput>({ moveX: 0, moveY: 0, lookDX: 0, lookDY: 0, firing: false, jump: false, aiming: false });
   const api = useMemo<Api>(
     () => ({
       patch: (p) => setHud((h) => ({ ...h, ...(typeof p === "function" ? p(h) : p) })),
@@ -996,8 +1012,14 @@ export function Arena(props: ArenaProps) {
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}
       >
-        <World {...props} api={api} startRef={startRef} paused={paused} />
+        <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} />
       </Canvas>
+
+      <TouchControls
+        input={touchInput.current}
+        scopedWeapon={weapon.scope}
+        onReload={() => reloadRef.current()}
+      />
 
       {hud.aiming && (
         <div className="fps-scope">
@@ -1106,11 +1128,12 @@ export function Arena(props: ArenaProps) {
         {paused && (
           <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/60">
             <h2 className="mso-banner">PAUSED</h2>
-            <p className="font-bold">Click anywhere in the arena to fight</p>
+            <p className="font-bold">Click or tap FIGHT to start</p>
             <p className="max-w-md text-center text-sm text-muted-foreground">
               WASD move · Space jump · Shift sprint · Click shoot · R reload{weapon.scope ? " · Hold right-click to scope" : ""} · Esc pause
             </p>
             <div className="pointer-events-auto flex gap-3">
+              <Button type="button" className="mso-btn" onClick={() => resumeRef.current()}>FIGHT</Button>
               <button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>Leave</button>
             </div>
           </div>

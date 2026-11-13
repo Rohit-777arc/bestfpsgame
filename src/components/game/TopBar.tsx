@@ -16,33 +16,47 @@ export function TopBar() {
   const p = useProgress();
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-30 border-b-[3px] border-[var(--mso-ink)] bg-[var(--mso-panel)] backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
-        <Link to="/" className="mso-display text-2xl text-primary">
-          MEXICAN STANDOF
+    <header className="site-header sticky top-0 z-30">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3">
+        <Link to="/" className="site-brand">
+          <span className="site-brand-mark" aria-hidden="true">
+            M
+          </span>
+          <span>
+            MEXICAN <b>STANDOF</b>
+          </span>
         </Link>
-        <nav className="flex flex-wrap gap-1">
+        <nav className="site-nav flex flex-wrap gap-1" aria-label="Main navigation">
           {NAV.map((n) => (
             <Link
               key={n.to}
               to={n.to}
-              className="rounded-lg px-3 py-1.5 font-bold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              activeProps={{ className: "bg-secondary text-foreground" }}
+              className="site-nav-link"
+              activeProps={{ className: "site-nav-link site-nav-active" }}
             >
               {n.label}
             </Link>
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          <div className="mso-chip">
-            <span className="mso-coin" />
+          <div className="site-credit">
+            <span className="site-credit-icon" aria-hidden="true">
+              ¢
+            </span>
             <span className="mso-num">{p.kind === "loading" ? "…" : p.credits}</span>
           </div>
-          <button type="button" className="mso-chip hover:bg-secondary" onClick={() => setOpen(true)}>
-            {p.kind === "account" ? "👤" : "🎮"} {p.kind === "loading" ? "…" : p.name}
+          <button type="button" className="site-account" onClick={() => setOpen(true)}>
+            <span className="site-account-avatar" aria-hidden="true">
+              {(p.kind === "loading" ? "…" : p.name).slice(0, 1).toUpperCase()}
+            </span>
+            <span className="site-account-name">{p.kind === "loading" ? "…" : p.name}</span>
           </button>
           {p.kind === "account" && (
-            <button type="button" className="text-sm font-bold text-muted-foreground hover:text-foreground" onClick={() => void signOut()}>
+            <button
+              type="button"
+              className="text-sm font-bold text-muted-foreground hover:text-foreground"
+              onClick={() => void signOut()}
+            >
               Sign out
             </button>
           )}

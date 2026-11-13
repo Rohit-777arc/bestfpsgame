@@ -1049,56 +1049,76 @@ export function Arena(props: ArenaProps) {
       )}
       {hurtRecent && <div className="mso-hurt" />}
 
-      <div className="pointer-events-none fixed inset-0 z-10 select-none">
+      <div className="pointer-events-none fixed inset-0 z-10 select-none fps-interface">
         {/* top bar */}
-        <div className="flex items-start justify-between gap-4 p-4">
+        <div className="fps-topbar flex items-start justify-between gap-4 p-4">
           <div className="flex flex-col gap-2">
-            <div className="mso-chip">
-              <span className="mso-chip-label">{props.mode === "train" ? "TRAINING" : props.mode === "duel" ? "1v1 DUEL" : props.mode === "coop" ? "CO-OP" : "DUNGEON"}</span>
-              <span>{map.name}</span>
+            <div className="fps-mode-chip">
+              <span className="fps-status-dot" />
+              <span>
+                {props.mode === "train"
+                  ? "TRAINING"
+                  : props.mode === "duel"
+                    ? "1V1 DUEL"
+                    : props.mode === "coop"
+                      ? "CO-OP"
+                      : "DUNGEON"}
+              </span>
+              <span className="fps-chip-divider" />
+              <span className="fps-map-name">{map.name}</span>
             </div>
             {(props.mode === "dungeon" || props.mode === "coop") && (
-              <div className="mso-chip">
-                <span className="mso-chip-label">WAVE</span>
-                <span className="mso-num">{hud.wave}</span>
-                <span className="opacity-70">· {hud.enemiesLeft} left</span>
+              <div className="fps-wave-chip">
+                <span className="fps-micro-label">WAVE</span>
+                <span className="mso-num">{String(hud.wave).padStart(2, "0")}</span>
+                <span className="fps-wave-divider" />
+                <span className="fps-enemies">
+                  <i />
+                  {hud.enemiesLeft} HOSTILES
+                </span>
               </div>
             )}
           </div>
 
           {props.mode === "train" && (
-            <div className="mso-panel px-6 py-2 text-center">
+            <div className="fps-timer-panel px-6 py-2 text-center">
               <div className="mso-num text-4xl">{hud.time}</div>
-              <div className="text-xs font-bold tracking-widest opacity-70">SECONDS</div>
+              <div className="fps-micro-label">SECONDS</div>
             </div>
           )}
           {props.mode === "duel" && (
-            <div className="mso-panel flex items-center gap-4 px-5 py-2">
+            <div className="fps-duel-panel flex items-center gap-4 px-5 py-2">
               <div className="text-center">
-                <div className="text-xs font-bold opacity-70">{props.playerName}</div>
+                <div className="fps-micro-label">{props.playerName}</div>
                 <div className="mso-num text-3xl text-[var(--mso-ally)]">{hud.duel[me] ?? 0}</div>
               </div>
-              <div className="mso-num text-lg opacity-60">VS</div>
+              <div className="fps-versus">VS</div>
               <div className="text-center">
-                <div className="text-xs font-bold opacity-70">
+                <div className="fps-micro-label">
                   {props.net?.roster.find((r) => r.id !== me)?.name ?? "Waiting…"}
                 </div>
                 <div className="mso-num text-3xl text-[var(--mso-foe)]">
-                  {Object.entries(hud.duel).filter(([k]) => k !== me).reduce((a, [, v]) => Math.max(a, v), 0)}
+                  {Object.entries(hud.duel)
+                    .filter(([k]) => k !== me)
+                    .reduce((a, [, v]) => Math.max(a, v), 0)}
                 </div>
               </div>
             </div>
           )}
 
           <div className="flex flex-col items-end gap-2">
-            <div className="mso-chip">
-              <span className="mso-coin" />
+            <div className="fps-credit-chip">
+              <span className="fps-credit-symbol" aria-hidden="true">
+                ¢
+              </span>
               <span className="mso-num">{props.credits}</span>
               {hud.earned > 0 && <span className="text-[var(--mso-ally)]">+{hud.earned}</span>}
             </div>
             <div className="flex flex-col items-end gap-1">
               {hud.feed.map((f) => (
-                <div key={f.id} className="mso-feed">{f.text}</div>
+                <div key={f.id} className="mso-feed">
+                  {f.text}
+                </div>
               ))}
             </div>
           </div>
@@ -1106,7 +1126,7 @@ export function Arena(props: ArenaProps) {
 
         {/* banner */}
         {hud.banner && (
-          <div className="absolute left-1/2 top-[22%] -translate-x-1/2 text-center">
+          <div className="fps-round-banner absolute left-1/2 top-[22%] -translate-x-1/2 text-center">
             <div className="mso-banner">{hud.banner}</div>
             {hud.sub && <div className="mso-sub">{hud.sub}</div>}
           </div>
@@ -1114,32 +1134,85 @@ export function Arena(props: ArenaProps) {
 
         {/* crosshair */}
         {!hud.aiming && hud.locked && (
-          <div className={`mso-cross ${hitRecent ? "mso-cross-hit" : ""}`}>
-            <span /><span /><span /><span />
+          <div className={`mso-cross ${hitRecent ? "mso-cross-hit" : ""}`} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
           </div>
         )}
 
         {/* bottom HUD */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-5">
-          <div className="mso-panel w-72 p-3">
+        <div className="fps-bottom-hud absolute bottom-0 left-0 right-0 flex items-end justify-between p-5">
+          <div className={`fps-health-panel ${hud.hp <= 35 ? "fps-health-critical" : ""}`}>
             <div className="flex items-baseline justify-between">
-              <span className="text-xs font-bold tracking-widest opacity-70">HEALTH</span>
-              <span className="mso-num text-3xl">{hud.hp}</span>
+              <span className="fps-micro-label">VITALS</span>
+              <span className="fps-health-value">
+                <span>{hud.hp}</span>
+                <small> / 100</small>
+              </span>
             </div>
-            <div className="mso-bar mt-1">
-              <div className="mso-bar-fill" style={{ width: `${hud.hp}%`, background: hud.hp > 35 ? "var(--mso-ally)" : "var(--mso-foe)" }} />
+            <div
+              className="fps-health-track mt-2"
+              role="progressbar"
+              aria-label="Health"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={hud.hp}
+            >
+              <div
+                className="mso-bar-fill"
+                style={{
+                  width: `${hud.hp}%`,
+                  background: hud.hp > 35 ? "var(--mso-ally)" : "var(--mso-foe)",
+                }}
+              />
             </div>
-            <div className="mt-2 flex justify-between text-xs font-bold opacity-80">
-              <span>{props.playerName}</span>
-              <span>{hud.kills} KILLS{props.mode === "train" ? ` · ${acc}%` : ""}</span>
+            <div className="fps-player-row mt-3 flex items-center justify-between">
+              <span className="fps-player-name">
+                <i />
+                {props.playerName}
+              </span>
+              <span className="fps-match-stat">
+                <span>
+                  <b>{hud.kills}</b> {props.mode === "train" ? "HITS" : "KILLS"}
+                </span>
+                <span className="fps-stat-divider" />
+                <span>
+                  <b>{hud.score}</b> SCORE
+                </span>
+                {props.mode === "train" && (
+                  <>
+                    <span className="fps-stat-divider" />
+                    <span>
+                      <b>{acc}%</b> ACC
+                    </span>
+                  </>
+                )}
+              </span>
             </div>
           </div>
-          <div className="mso-panel w-64 p-3 text-right">
-            <div className="text-xs font-bold tracking-widest opacity-70">{weapon.name.toUpperCase()}</div>
-            <div className="mso-num text-5xl leading-none">
-              {hud.reloading ? <span className="text-2xl">RELOADING…</span> : <>{hud.ammo}<span className="text-2xl opacity-60"> / {weapon.mag}</span></>}
+          <div className={`fps-ammo-panel ${hud.reloading ? "fps-is-reloading" : ""}`}>
+            <div className="fps-weapon-label">
+              <span className="fps-micro-label">EQUIPPED</span>
+              <span>{weapon.name.toUpperCase()}</span>
             </div>
-            <div className="mt-1 text-xs opacity-70">R reload{weapon.scope ? " · Right-click scope" : ""}</div>
+            <div className="fps-ammo-readout">
+              {hud.reloading ? (
+                <span className="fps-reload-label">
+                  RELOADING<span className="fps-reload-dots">...</span>
+                </span>
+              ) : (
+                <>
+                  <span className="fps-ammo-current">{hud.ammo}</span>
+                  <span className="fps-ammo-divider">/</span>
+                  <span className="fps-ammo-total">{weapon.mag}</span>
+                </>
+              )}
+            </div>
+            <div className="fps-ammo-hint">
+              [ R ] RELOAD{weapon.scope ? "  ·  [ RMB ] SCOPE" : ""}
+            </div>
           </div>
         </div>
 

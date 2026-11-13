@@ -17,10 +17,12 @@ type MoveVisual = { x: number; y: number };
 export function TouchControls({
   input,
   scopedWeapon,
+  active,
   onReload,
 }: {
   input: TouchInput;
   scopedWeapon: boolean;
+  active: boolean;
   onReload: () => void;
 }) {
   const movePointer = useRef<number | null>(null);
@@ -28,6 +30,8 @@ export function TouchControls({
   const lastLook = useRef<{ x: number; y: number } | null>(null);
   const [lookStick, setLookStick] = useState<StickVisual | null>(null);
   const [moveStick, setMoveStick] = useState<MoveVisual>({ x: 0, y: 0 });
+
+  if (!active) return null;
 
   const updateMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -67,7 +71,7 @@ export function TouchControls({
   };
 
   return (
-    <div className="fps-touch-controls pointer-events-none absolute inset-0 z-20 select-none" aria-label="Mobile game controls">
+    <div className="fps-touch-controls fps-touch-controls-active pointer-events-none absolute inset-0 z-20 select-none" aria-label="Mobile game controls">
       <div
         className="pointer-events-auto absolute bottom-[150px] left-5 flex size-28 touch-none items-center justify-center rounded-full border-2 border-foreground/55 bg-background/25 shadow-lg"
         aria-label="Movement joystick"

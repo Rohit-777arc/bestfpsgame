@@ -24,6 +24,7 @@ import {
 } from "@/game/net";
 
 export type ArenaMode = "dungeon" | "train" | "coop" | "duel";
+type ControlMode = "pc" | "mobile";
 
 export interface NetLink {
   channelRef: MutableRefObject<RealtimeChannel | null>;
@@ -117,7 +118,7 @@ function blocked(x: number, z: number, feet: number, pad = 0.4) {
   return CRATES.some((c) => feet < c.s - 0.1 && Math.abs(x - c.x) < c.s / 2 + pad && Math.abs(z - c.z) < c.s / 2 + pad);
 }
 
-function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => void>; resumeRef: MutableRefObject<() => void>; touchInput: MutableRefObject<TouchInput>; reloadRef: MutableRefObject<() => void>; paused: boolean }) {
+function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => void>; resumeRef: MutableRefObject<() => void>; controlMode: MutableRefObject<ControlMode | null>; touchInput: MutableRefObject<TouchInput>; reloadRef: MutableRefObject<() => void>; paused: boolean }) {
   const { mode, difficulty, net, api } = props;
   const weapon = WEAPONS[props.weapon];
   const { camera, scene, gl } = useThree();
@@ -295,22 +296,20 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   props.startRef.current = begin;
 
   props.resumeRef.current = () => {
+    touchMode.current = props.controlMode.current === "mobile";
     if (touchMode.current) {
       api.patch({ locked: true });
       return;
     }
-    const lockRequest = gl.domElement.requestPointerLock?.();
-    if (!lockRequest) api.patch({ locked: true });
+    api.patch({ locked: true });
+    const request = gl.domElement.requestPointerLock?.();
+    if (request && typeof request.catch === "function") {
+      void request.catch(() => api.patch({ locked: true }));
+    }
   };
 
   useEffect(() => {
-    touchMode.current = window.matchMedia("(pointer: coarse)").matches;
-    if (touchMode.current) api.patch({ locked: true });
-  }, []);
-
-  useEffect(() => {
     camera.rotation.order = "YXZ";
-    begin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -611,6 +610,7 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   useFrame((state, raw) => {
     const dt = Math.min(raw, 0.05);
     clock.current += dt;
+    touchMode.current = props.controlMode.current === "mobile";
     const k = keys.current;
     const live = !props.paused && !over.current;
 
@@ -976,6 +976,9 @@ export function Arena(props: ArenaProps) {
   const feedId = useRef(0);
   const startRef = useRef<() => void>(() => {});
   const resumeRef = useRef<() => void>(() => {});
+  const controlModeRef = useRef<ControlMode | null>(null);
+  const [controlMode, setControlMode] = useState<ControlMode | null>(null);
+  const [hasStarted, setHasStarted] = useState(false);
   const reloadRef = useRef<() => void>(() => {});
   const touchInput = useRef<TouchInput>({ moveX: 0, moveY: 0, lookDX: 0, lookDY: 0, firing: false, jump: false, aiming: false });
   const api = useMemo<Api>(
@@ -1002,6 +1005,21 @@ export function Arena(props: ArenaProps) {
       sendEvent(props.net.channelRef.current, { type: "restart", from: me });
     }
     startRef.current();
+    resumeRef.current();
+  };
+
+  const chooseControlMode = (mode: ControlMode) => {
+    controlModeRef.current = mode;
+    setControlMode(mode);
+    if (mode === "mobile") document.exitPointerLock?.();
+  };
+  const enterFight = () => {
+    if (!controlModeRef.current) return;
+    if (!hasStarted) {
+      startRef.current();
+      setHasStarted(true);
+    }
+    resumeRef.current();
   };
 
   return (
@@ -1012,12 +1030,13 @@ export function Arena(props: ArenaProps) {
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}
       >
-        <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} />
+        <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} controlMode={controlModeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} />
       </Canvas>
 
       <TouchControls
         input={touchInput.current}
         scopedWeapon={weapon.scope}
+        active={controlMode === "mobile"}
         onReload={() => reloadRef.current()}
       />
 
@@ -1126,15 +1145,28 @@ export function Arena(props: ArenaProps) {
 
         {/* paused / click to fight */}
         {paused && (
-          <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/60">
-            <h2 className="mso-banner">PAUSED</h2>
-            <p className="font-bold">Click or tap FIGHT to start</p>
-            <p className="max-w-md text-center text-sm text-muted-foreground">
-              WASD move · Space jump · Shift sprint · Click shoot · R reload{weapon.scope ? " · Hold right-click to scope" : ""} · Esc pause
-            </p>
+          <div
+            className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/60"
+            onClick={(event) => {
+              if (event.target === event.currentTarget && controlModeRef.current) enterFight();
+            }}
+          >
+            <h2 className="mso-banner">{hasStarted ? "PAUSED" : "CHOOSE YOUR DEVICE"}</h2>
+            <p className="font-bold">{hasStarted ? "Choose your controls, then jump back in" : "How are you playing Mexican Standof?"}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button type="button" aria-pressed={controlMode === "pc"} className={`mso-btn ${controlMode === "pc" ? "" : "mso-btn-ghost"}`} onClick={() => chooseControlMode("pc")}>PC</Button>
+              <Button type="button" aria-pressed={controlMode === "mobile"} className={`mso-btn ${controlMode === "mobile" ? "" : "mso-btn-ghost"}`} onClick={() => chooseControlMode("mobile")}>MOBILE</Button>
+            </div>
+            {controlMode && (
+              <p className="max-w-md text-center text-sm text-muted-foreground">
+                {controlMode === "mobile"
+                  ? "Left joystick move · Right joystick aim · FIRE · JUMP · R reload"
+                  : `WASD move · Mouse aim · Click shoot · Space jump · Shift sprint · R reload${weapon.scope ? " · Right-click scope" : ""}`}
+              </p>
+            )}
             <div className="pointer-events-auto flex gap-3">
-              <Button type="button" className="mso-btn" onClick={() => resumeRef.current()}>FIGHT</Button>
-              <button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>Leave</button>
+              <Button type="button" className="mso-btn" disabled={!controlMode} onClick={enterFight}>{hasStarted ? "FIGHT" : "START"}</Button>
+              {hasStarted && <Button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>Leave</Button>}
             </div>
           </div>
         )}

@@ -15,4 +15,5 @@ Approved plan: .lovable/plan/mexican-standof-game-hub-plan-2026-11-04.md
 - [x] 11. Rename DUST RANGE → MEXICAN STANDOF everywhere
 - [x] 12. Verify: tests, build clean, browser playtest, two-client co-op check
 - [ ] 13. Fix dungeon launch freezing on the pause screen and verify deployment into gameplay
-- [ ] 14. Add wave-smart armed enemies, fix white hit flashes, and add mobile joystick controls
+- [ ] 14. Ask PC or mobile before starting and present matching controls, including touch joysticks
+- [ ] 15. Add wave-smart armed enemies and fix white hit flashes

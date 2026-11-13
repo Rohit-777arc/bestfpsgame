@@ -202,8 +202,9 @@ background:linear-gradient(var(--foreground),var(--foreground)) center/2px 100% 
 .fps-scope-dot{position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:99px;transform:translate(-50%,-50%);background:var(--mso-foe);}
 
 .fps-touch-controls{display:none}
+.fps-touch-controls-active{display:block}
 @media (pointer:coarse) and (max-width:900px){
-  .fps-touch-controls{display:block}
+  .fps-touch-controls-active{display:block}
   .fps-touch-controls [aria-label="Movement joystick"]{bottom:max(145px,env(safe-area-inset-bottom) + 135px);left:max(16px,env(safe-area-inset-left) + 12px)}
   .fps-touch-controls [aria-label="Aim joystick"]{bottom:max(205px,env(safe-area-inset-bottom) + 195px)}
   .fps-touch-controls > div:last-child{bottom:max(145px,env(safe-area-inset-bottom) + 135px);right:max(16px,env(safe-area-inset-right) + 12px)}

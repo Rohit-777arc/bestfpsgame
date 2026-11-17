@@ -39,6 +39,10 @@ function TrainPage() {
         weapon={p.equipped}
         playerName={p.name}
         credits={p.credits}
+        level={p.level}
+        experience={p.experience}
+        equippedShirt={p.equippedShirt}
+        equippedHat={p.equippedHat}
         onExit={() => setPlaying(false)}
       />
     );

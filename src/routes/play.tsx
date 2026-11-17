@@ -14,9 +14,9 @@ export const Route = createFileRoute("/play")({
   head: () => ({
     meta: [
       { title: "Dungeon Mode — Mexican Standof" },
-      { name: "description", content: "Fight waves of enemies from Easy to Hard and earn credits for every wave you clear." },
+      { name: "description", content: "Clear five enemy waves, earn credits and experience, and level up your operator." },
       { property: "og:title", content: "Dungeon Mode — Mexican Standof" },
-      { property: "og:description", content: "Survive enemy waves and earn credits to unlock new weapons." },
+      { property: "og:description", content: "Clear the five-wave dungeon to earn credits, experience, and operator levels." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -40,11 +40,16 @@ function PlayPage() {
         weapon={p.equipped}
         playerName={p.name}
         credits={p.credits}
+        level={p.level}
+        experience={p.experience}
+        equippedShirt={p.equippedShirt}
+        equippedHat={p.equippedHat}
         onWaveCleared={async (wave) => {
           const res = await awardWave(map, diff, wave, runId.current);
           runId.current = res.runId;
-          return res.awarded;
+          return res;
         }}
+        onRestart={() => { runId.current = null; }}
         onExit={() => {
           runId.current = null;
           setPlaying(false);

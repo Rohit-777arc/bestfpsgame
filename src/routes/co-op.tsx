@@ -97,16 +97,21 @@ function CoopPage() {
         weapon={p.equipped}
         playerName={p.name}
         credits={p.credits}
+        level={p.level}
+        experience={p.experience}
+        equippedShirt={p.equippedShirt}
+        equippedHat={p.equippedHat}
         net={{ channelRef, bus, roster }}
-        onWaveCleared={
-          mode === "coop"
-            ? async (wave) => {
-                const res = await awardWave(map, "normal", wave, runId.current);
+        {...(mode === "coop"
+          ? {
+              onWaveCleared: async (wave: number) => {
+                const res = await awardWave(map, "normal", wave, runId.current, "coop");
                 runId.current = res.runId;
-                return res.awarded;
-              }
-            : () => 0
-        }
+                return res;
+              },
+            }
+          : {})}
+        onRestart={() => { runId.current = null; }}
         onExit={() => setPlaying(false)}
       />
     );

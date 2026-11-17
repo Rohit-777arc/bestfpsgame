@@ -15,6 +15,13 @@
       "when": 1794111210041,
       "tag": "0001_allow_run_updates",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794916344431,
+      "tag": "0002_player_progress_and_cosmetics",
+      "breakpoints": true
     }
   ]
 }

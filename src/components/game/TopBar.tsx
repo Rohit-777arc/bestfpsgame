@@ -6,6 +6,7 @@ import { signOut } from "@/game/progress";
 
 const NAV = [
   { to: "/play", label: "Dungeon" },
+  { to: "/profile", label: "Profile" },
   { to: "/train", label: "Training" },
   { to: "/co-op", label: "Co-op & 1v1" },
   { to: "/armory", label: "Armory" },

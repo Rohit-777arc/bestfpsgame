@@ -12,12 +12,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Fight enemy waves for credits, unlock 5 weapons, train your aim, and 1v1 your friends with a room code. Free in your browser.",
+          "Clear dungeon waves for credits and XP, customize your operator, unlock weapons, train your aim, and duel friends. Free in your browser.",
       },
       { property: "og:title", content: "Mexican Standof — Browser FPS" },
       {
         property: "og:description",
-        content: "Wave dungeons, a weapon armory, aim training and friend duels — in your browser.",
+        content: "Five-wave dungeons, operator profiles and cosmetics, a weapon armory, aim training and friend duels.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -69,7 +69,7 @@ function Hub() {
               <span>STANDOF</span>
             </h1>
             <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-              Clear dungeon waves for credits — {DIFFICULTIES.easy.creditsPerWave} on Easy,{" "}
+              Clear five dungeon waves for credits and XP — {DIFFICULTIES.easy.creditsPerWave} credits per wave on Easy,{" "}
               {DIFFICULTIES.normal.creditsPerWave} on Normal, {DIFFICULTIES.hard.creditsPerWave} on
               Hard. Gear up in the Armory, then call out a friend.
             </p>
@@ -77,6 +77,9 @@ function Hub() {
               <Link to="/play" className="mso-btn hub-primary-action">
                 <span>DEPLOY</span>
                 <span aria-hidden="true">↗</span>
+              </Link>
+              <Link to="/profile" className="mso-btn mso-btn-ghost">
+                PLAYER PROFILE
               </Link>
               <Link to="/armory" className="mso-btn mso-btn-ghost">
                 OPEN ARMORY

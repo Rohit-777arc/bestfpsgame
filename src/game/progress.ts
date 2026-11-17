@@ -1,24 +1,13 @@
-// Player progress: credits, owned weapons and the equipped gun.
+// Player progress: credits, experience, cosmetics and the equipped loadout.
 // Guests keep everything in this browser; accounts keep it in Lovable Cloud.
 
 import { supabase } from "@/integrations/supabase/client";
-import {
-  isWeaponId,
-  STARTER_WEAPON,
-  WEAPONS,
-  WEAPON_IDS,
-  type WeaponId,
-} from "./sim/weapons";
+import { isWeaponId, STARTER_WEAPON, WEAPONS, WEAPON_IDS, type WeaponId } from "./sim/weapons";
 import { waveCredits, type Difficulty } from "./sim/waves";
 import type { MapId } from "./sim/maps";
-import {
-  awardWaveCredits,
-  equipWeapon,
-  getProfile,
-  importGuestProgress,
-  purchaseWeapon,
-  renamePlayer,
-} from "./profile.functions";
+import { COSMETICS, isCosmeticId, type CosmeticId, type CosmeticSlot } from "./sim/cosmetics";
+import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, waveExperience } from "./sim/progression";
+import { awardWaveCredits, equipCosmeticItem, equipWeapon, getProfile, importGuestProgress, purchaseCosmetic, purchaseWeapon, renamePlayer } from "./profile.functions";
 
 const STORE_KEY = "mso-progress-v1";
 const IMPORT_KEY = "mso-imported-v1";
@@ -27,14 +16,32 @@ export interface Progress {
   kind: "loading" | "guest" | "account";
   name: string;
   credits: number;
+  level: number;
+  experience: number;
+  dungeonsCompleted: number;
   weapons: WeaponId[];
   equipped: WeaponId;
+  cosmetics: CosmeticId[];
+  equippedShirt: CosmeticId | null;
+  equippedHat: CosmeticId | null;
   email?: string | undefined;
 }
 
 type Listener = (p: Progress) => void;
 
-let state: Progress = { kind: "loading", name: "Player", credits: 0, weapons: [STARTER_WEAPON], equipped: STARTER_WEAPON };
+let state: Progress = {
+  kind: "loading",
+  name: "Player",
+  credits: 0,
+  level: 1,
+  experience: 0,
+  dungeonsCompleted: 0,
+  weapons: [STARTER_WEAPON],
+  equipped: STARTER_WEAPON,
+  cosmetics: [],
+  equippedShirt: null,
+  equippedHat: null,
+};
 const listeners = new Set<Listener>();
 
 function notify() {
@@ -57,18 +64,37 @@ function loadGuest(): Progress {
       const p = JSON.parse(raw) as Partial<Progress>;
       const weapons = (p.weapons ?? []).filter(isWeaponId);
       if (!weapons.includes(STARTER_WEAPON)) weapons.unshift(STARTER_WEAPON);
+      const level = Math.max(1, Math.floor(Number(p.level) || 1));
+      const xp = addExperience({ level, experience: 0 }, Math.max(0, Math.floor(Number(p.experience) || 0)));
       return {
         kind: "guest",
         name: p.name ?? guestName(),
         credits: Math.max(0, Number(p.credits) || 0),
+        ...xp,
+        dungeonsCompleted: Math.max(0, Math.floor(Number(p.dungeonsCompleted) || 0)),
         weapons: [...new Set(weapons)],
         equipped: isWeaponId(String(p.equipped)) ? (p.equipped as WeaponId) : STARTER_WEAPON,
+        cosmetics: [...new Set((p.cosmetics ?? []).filter(isCosmeticId))],
+        equippedShirt: isCosmeticId(String(p.equippedShirt)) ? (p.equippedShirt as CosmeticId) : null,
+        equippedHat: isCosmeticId(String(p.equippedHat)) ? (p.equippedHat as CosmeticId) : null,
       };
     }
   } catch {
     /* corrupted store — fall through to a fresh guest */
   }
-  const fresh: Progress = { kind: "guest", name: guestName(), credits: 0, weapons: [STARTER_WEAPON], equipped: STARTER_WEAPON };
+  const fresh: Progress = {
+    kind: "guest",
+    name: guestName(),
+    credits: 0,
+    level: 1,
+    experience: 0,
+    dungeonsCompleted: 0,
+    weapons: [STARTER_WEAPON],
+    equipped: STARTER_WEAPON,
+    cosmetics: [],
+    equippedShirt: null,
+    equippedHat: null,
+  };
   saveGuest(fresh);
   return fresh;
 }
@@ -76,7 +102,18 @@ function loadGuest(): Progress {
 function saveGuest(p: Progress) {
   localStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ name: p.name, credits: p.credits, weapons: p.weapons, equipped: p.equipped }),
+    JSON.stringify({
+      name: p.name,
+      credits: p.credits,
+      level: p.level,
+      experience: p.experience,
+      dungeonsCompleted: p.dungeonsCompleted,
+      weapons: p.weapons,
+      equipped: p.equipped,
+      cosmetics: p.cosmetics,
+      equippedShirt: p.equippedShirt,
+      equippedHat: p.equippedHat,
+    }),
   );
 }
 
@@ -94,8 +131,20 @@ export async function initProgress(): Promise<void> {
         kind: "account",
         name: profile.name,
         credits: profile.credits,
+        level: profile.level,
+        experience: profile.experience,
+        dungeonsCompleted: profile.dungeonsCompleted,
         weapons: [...new Set([...profile.weapons.filter(isWeaponId), STARTER_WEAPON])],
         equipped: isWeaponId(profile.equipped) ? (profile.equipped as WeaponId) : STARTER_WEAPON,
+        cosmetics: profile.cosmetics.filter(isCosmeticId),
+        equippedShirt:
+          typeof profile.equippedShirt === "string" && isCosmeticId(profile.equippedShirt)
+            ? profile.equippedShirt
+            : null,
+        equippedHat:
+          typeof profile.equippedHat === "string" && isCosmeticId(profile.equippedHat)
+            ? profile.equippedHat
+            : null,
         email: data.session.user.email ?? undefined,
       };
       notify();
@@ -118,15 +167,32 @@ async function maybeImportGuest() {
   }
   try {
     const p = JSON.parse(raw) as Partial<Progress>;
-    const hasStuff = (Number(p.credits) || 0) > 0 || (p.weapons?.length ?? 0) > 1;
+    const hasStuff =
+      (Number(p.credits) || 0) > 0 || (Number(p.level) || 1) > 1 || (Number(p.experience) || 0) > 0 || (Number(p.dungeonsCompleted) || 0) > 0 || (p.weapons?.length ?? 0) > 1 || (p.cosmetics?.length ?? 0) > 0;
     if (!hasStuff) {
       localStorage.setItem(IMPORT_KEY, "1");
       return;
     }
+    const level = Math.max(1, Math.floor(Number(p.level) || 1));
+    const xp = addExperience({ level, experience: 0 }, Math.max(0, Math.floor(Number(p.experience) || 0)));
     const res = await importGuestProgress({
-      data: { credits: Math.max(0, Number(p.credits) || 0), weapons: (p.weapons ?? []).filter(isWeaponId) },
+      data: {
+        credits: Math.max(0, Number(p.credits) || 0),
+        ...xp,
+        dungeonsCompleted: Math.max(0, Math.floor(Number(p.dungeonsCompleted) || 0)),
+        weapons: (p.weapons ?? []).filter(isWeaponId),
+        cosmetics: (p.cosmetics ?? []).filter(isCosmeticId),
+      },
     });
-    state = { ...state, credits: res.credits, weapons: [...new Set([...state.weapons, ...res.weapons])] };
+    state = {
+      ...state,
+      credits: res.credits,
+      level: res.level,
+      experience: res.experience,
+      dungeonsCompleted: res.dungeonsCompleted,
+      weapons: [...new Set([...state.weapons, ...res.weapons])],
+      cosmetics: [...new Set([...state.cosmetics, ...res.cosmetics])],
+    };
     notify();
   } finally {
     localStorage.setItem(IMPORT_KEY, "1");
@@ -139,18 +205,54 @@ export async function awardWave(
   difficulty: Difficulty,
   wave: number,
   runId: string | null,
-): Promise<{ awarded: number; runId: string | null }> {
+  mode: "dungeon" | "coop" = "dungeon",
+): Promise<{
+  awarded: number;
+  experience: number;
+  levelsGained: number;
+  level: number;
+  runId: string | null;
+}> {
   const payout = waveCredits(difficulty);
+  const completed = mode === "dungeon" && wave === DUNGEON_WAVES;
+  const awarded = payout + (completed ? DUNGEON_CLEAR_CREDITS : 0);
+  const gainedExperience = waveExperience(difficulty) + (completed ? DUNGEON_CLEAR_EXPERIENCE : 0);
   if (state.kind === "account") {
-    const res = await awardWaveCredits({ data: { map, difficulty, wave, runId } });
-    state = { ...state, credits: res.credits };
+    const res = await awardWaveCredits({ data: { map, difficulty, wave, runId, mode } });
+    const levelsGained = Math.max(0, res.level - state.level);
+    state = {
+      ...state,
+      credits: res.credits,
+      level: res.level,
+      experience: res.experience,
+      dungeonsCompleted: res.dungeonsCompleted,
+    };
     notify();
-    return { awarded: payout, runId: res.runId };
+    return {
+      awarded: res.awarded,
+      experience: res.awardedExperience,
+      levelsGained,
+      level: res.level,
+      runId: res.runId,
+    };
   }
-  state = { ...state, credits: state.credits + payout };
+  const previousLevel = state.level;
+  const xp = addExperience(state, gainedExperience);
+  state = {
+    ...state,
+    credits: state.credits + awarded,
+    dungeonsCompleted: state.dungeonsCompleted + (completed ? 1 : 0),
+    ...xp,
+  };
   saveGuest(state);
   notify();
-  return { awarded: payout, runId: null };
+  return {
+    awarded,
+    experience: gainedExperience,
+    levelsGained: xp.level - previousLevel,
+    level: xp.level,
+    runId: null,
+  };
 }
 
 export async function buyWeapon(id: WeaponId): Promise<void> {
@@ -175,6 +277,36 @@ export async function setEquipped(id: WeaponId): Promise<void> {
     saveGuest({ ...state, equipped: id });
   }
   state = { ...state, equipped: id };
+  notify();
+}
+
+export async function buyCosmetic(id: CosmeticId): Promise<void> {
+  const item = COSMETICS.find((cosmetic) => cosmetic.id === id);
+  if (!item) throw new Error("Unknown cosmetic");
+  if (state.cosmetics.includes(id)) return;
+  if (state.kind === "account") {
+    const res = await purchaseCosmetic({ data: { cosmeticId: id } });
+    state = { ...state, credits: res.credits, cosmetics: [...state.cosmetics, id] };
+  } else {
+    if (state.credits < item.price) throw new Error(`Need ${item.price - state.credits} more credits`);
+    state = { ...state, credits: state.credits - item.price, cosmetics: [...state.cosmetics, id] };
+    saveGuest(state);
+  }
+  notify();
+}
+
+export async function setEquippedCosmetic(slot: CosmeticSlot, id: CosmeticId | null): Promise<void> {
+  if (id && (!state.cosmetics.includes(id) || !COSMETICS.some((item) => item.id === id && item.slot === slot))) {
+    throw new Error("You don't own that cosmetic");
+  }
+  if (state.kind === "account") {
+    await equipCosmeticItem({ data: { slot, cosmeticId: id } });
+  }
+  state = {
+    ...state,
+    ...(slot === "shirt" ? { equippedShirt: id } : { equippedHat: id }),
+  };
+  if (state.kind === "guest") saveGuest(state);
   notify();
 }
 

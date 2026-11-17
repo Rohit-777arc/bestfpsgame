@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getProgress, subscribeProgress, type Progress } from "@/game/progress";
 
-/** Live player progress (credits, weapons). "loading" until the browser reads it. */
+/** Live player progress. "loading" until the browser reads it. */
 export function useProgress(): Progress {
   const [p, setP] = useState<Progress>(() => ({ ...getProgress(), kind: "loading" }));
   useEffect(() => {

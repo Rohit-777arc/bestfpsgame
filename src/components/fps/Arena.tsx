@@ -13,15 +13,10 @@ import { Scene } from "./Scene";
 import { EnemyMesh, RemoteMesh, type EnemyRuntime, type RemoteRuntime } from "./Actors";
 import { TouchControls, type TouchInput } from "./TouchControls";
 import { Button } from "@/components/ui/button";
-import {
-  isCoordinator,
-  playerId,
-  sendEvent,
-  sendState,
-  type NetBus,
-  type NetEvent,
-  type RosterEntry,
-} from "@/game/net";
+import { CharacterPreview } from "@/components/game/CharacterPreview";
+import { ExperienceBar } from "@/components/game/ExperienceBar";
+import { DUNGEON_WAVES } from "@/game/sim/progression";
+import { isCoordinator, playerId, sendEvent, sendState, type NetBus, type NetEvent, type RosterEntry } from "@/game/net";
 
 export type ArenaMode = "dungeon" | "train" | "coop" | "duel";
 type ControlMode = "pc" | "mobile";
@@ -40,8 +35,13 @@ export interface ArenaProps {
   weapon: WeaponId;
   playerName: string;
   credits: number;
+  level?: number;
+  experience?: number;
+  equippedShirt?: string | null;
+  equippedHat?: string | null;
   net?: NetLink;
-  onWaveCleared?: (wave: number) => Promise<number> | number; // returns credits awarded
+  onWaveCleared?: (wave: number) => Promise<{ awarded: number; experience: number; levelsGained?: number; level?: number }> | { awarded: number; experience: number; levelsGained?: number; level?: number } | undefined;
+  onRestart?: () => void;
   onExit: () => void;
 }
 
@@ -118,7 +118,17 @@ function blocked(x: number, z: number, feet: number, pad = 0.4) {
   return CRATES.some((c) => feet < c.s - 0.1 && Math.abs(x - c.x) < c.s / 2 + pad && Math.abs(z - c.z) < c.s / 2 + pad);
 }
 
-function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => void>; resumeRef: MutableRefObject<() => void>; controlMode: MutableRefObject<ControlMode | null>; touchInput: MutableRefObject<TouchInput>; reloadRef: MutableRefObject<() => void>; paused: boolean }) {
+function World(
+  props: ArenaProps & {
+    api: Api;
+    startRef: MutableRefObject<() => void>;
+    resumeRef: MutableRefObject<() => void>;
+    controlMode: MutableRefObject<ControlMode | null>;
+    touchInput: MutableRefObject<TouchInput>;
+    reloadRef: MutableRefObject<() => void>;
+    paused: boolean;
+  },
+) {
   const { mode, difficulty, net, api } = props;
   const weapon = WEAPONS[props.weapon];
   const { camera, scene, gl } = useThree();
@@ -152,6 +162,9 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   const waveSeed = useRef(0);
   const nextWaveAt = useRef(-1);
   const clearedWave = useRef(0);
+  const runCredits = useRef(0);
+  const runExperience = useRef(0);
+  const runRewardSaveFailed = useRef(false);
   const kills = useRef(0);
   const shots = useRef(0);
   const hits = useRef(0);
@@ -171,14 +184,19 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   const roster = net?.roster ?? [];
   const rosterRef = useRef(roster);
   rosterRef.current = roster;
-  const nameOf = (id: string) => (id === playerId() ? props.playerName : rosterRef.current.find((r) => r.id === id)?.name ?? "Player");
+  const nameOf = (id: string) => (id === playerId() ? props.playerName : (rosterRef.current.find((r) => r.id === id)?.name ?? "Player"));
 
   // ---- spawning ----
   const spawnPoint = useCallback((): [number, number] => {
     if (mode === "duel") {
       const ids = rosterRef.current.map((r) => r.id).sort();
       const idx = Math.max(0, ids.indexOf(playerId()));
-      const corners: [number, number][] = [[-30, -30], [30, 30], [30, -30], [-30, 30]];
+      const corners: [number, number][] = [
+        [-30, -30],
+        [30, 30],
+        [30, -30],
+        [-30, 30],
+      ];
       const c = corners[(idx + Math.floor(Math.random() * 2) * 2) % 4];
       return c;
     }
@@ -228,7 +246,6 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         moving: true,
         goalX: (Math.random() - 0.5) * ARENA * 1.6,
         goalZ: (Math.random() - 0.5) * ARENA * 1.6,
-        flash: 0,
       };
     },
     [difficulty, mode, props.trainLevel],
@@ -243,7 +260,12 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
       nextWaveAt.current = -1;
       enemies.current = spawnPlan(difficulty, n, seed).map((p) => makeEnemy(p.id, p.tier, p.x, p.z));
       syncEnemyKeys();
-      api.patch({ wave: n, enemiesLeft: enemies.current.length, banner: `WAVE ${n}`, sub: `${enemies.current.length} enemies incoming` });
+      api.patch({
+        wave: n,
+        enemiesLeft: enemies.current.length,
+        banner: `WAVE ${n}`,
+        sub: `${enemies.current.length} enemies incoming`,
+      });
       setTimeout(() => api.patch({ banner: null, sub: null }), 2200);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,6 +290,9 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     shots.current = 0;
     hits.current = 0;
     clearedWave.current = 0;
+    runCredits.current = 0;
+    runExperience.current = 0;
+    runRewardSaveFailed.current = false;
     timeLeft.current = TRAIN_TIME;
     duelScore.current = {};
     respawn();
@@ -279,7 +304,12 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
       syncEnemyKeys();
       if (isCoordinator(rosterRef.current)) {
         const seed = Math.floor(Math.random() * 1e9);
-        sendEvent(net?.channelRef.current ?? null, { type: "wave", from: playerId(), wave: 1, seed });
+        sendEvent(net?.channelRef.current ?? null, {
+          type: "wave",
+          from: playerId(),
+          wave: 1,
+          seed,
+        });
         startWave(1, seed);
       } else {
         api.patch({ banner: "WAITING", sub: "for the host to start the wave" });
@@ -319,7 +349,20 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     net.bus.current.onState = (s) => {
       let r = remotes.current.get(s.id);
       if (!r) {
-        r = { id: s.id, name: s.name, x: s.x, y: s.y, z: s.z, ry: s.ry, tx: s.x, ty: s.y, tz: s.z, tr: s.ry, hp: s.hp, seen: false };
+        r = {
+          id: s.id,
+          name: s.name,
+          x: s.x,
+          y: s.y,
+          z: s.z,
+          ry: s.ry,
+          tx: s.x,
+          ty: s.y,
+          tz: s.z,
+          tr: s.ry,
+          hp: s.hp,
+          seen: false,
+        };
         remotes.current.set(s.id, r);
       }
       r.tx = s.x;
@@ -349,15 +392,27 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         if (hp.current <= 0) {
           dead.current = true;
           respawnAt.current = clock.current + 3;
-          duelScore.current = { ...duelScore.current, [e.from]: (duelScore.current[e.from] ?? 0) + 1 };
+          duelScore.current = {
+            ...duelScore.current,
+            [e.from]: (duelScore.current[e.from] ?? 0) + 1,
+          };
           const killerName = nameOf(e.from);
-          sendEvent(net.channelRef.current, { type: "frag", from: playerId(), killer: e.from, killerName, victimName: props.playerName });
+          sendEvent(net.channelRef.current, {
+            type: "frag",
+            from: playerId(),
+            killer: e.from,
+            killerName,
+            victimName: props.playerName,
+          });
           api.feed(`${killerName} ▸ ${props.playerName}`);
           api.patch({ duel: duelScore.current, banner: "ELIMINATED", sub: `by ${killerName}` });
           checkDuelEnd();
         }
       } else if (e.type === "frag" && mode === "duel") {
-        duelScore.current = { ...duelScore.current, [e.killer]: (duelScore.current[e.killer] ?? 0) + 1 };
+        duelScore.current = {
+          ...duelScore.current,
+          [e.killer]: (duelScore.current[e.killer] ?? 0) + 1,
+        };
         api.feed(`${e.killerName} ▸ ${e.victimName}`);
         api.patch({ duel: duelScore.current });
         if (e.killer === playerId()) {
@@ -385,13 +440,18 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         api.patch({
           banner: null,
           sub: null,
-          over: { title: won ? "VICTORY" : "DEFEAT", lines: [`${nameOf(id)} wins the duel ${s}–${otherScore(id)}`] },
+          over: {
+            title: won ? "VICTORY" : "DEFEAT",
+            lines: [`${nameOf(id)} wins the duel ${s}–${otherScore(id)}`],
+          },
         });
       }
     }
   }
   function otherScore(id: string) {
-    return Object.entries(duelScore.current).filter(([k]) => k !== id).reduce((a, [, v]) => Math.max(a, v), 0);
+    return Object.entries(duelScore.current)
+      .filter(([k]) => k !== id)
+      .reduce((a, [, v]) => Math.max(a, v), 0);
   }
 
   // remote roster → avatars
@@ -402,7 +462,20 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     for (const id of ids) {
       if (!remotes.current.has(id)) {
         const name = roster.find((r) => r.id === id)?.name ?? "Player";
-        remotes.current.set(id, { id, name, x: 0, y: EYE, z: 0, ry: 0, tx: 0, ty: EYE, tz: 0, tr: 0, hp: MAX_HP, seen: false });
+        remotes.current.set(id, {
+          id,
+          name,
+          x: 0,
+          y: EYE,
+          z: 0,
+          ry: 0,
+          tx: 0,
+          ty: EYE,
+          tz: 0,
+          tr: 0,
+          hp: MAX_HP,
+          seen: false,
+        });
       }
     }
     setRemoteIds(ids);
@@ -517,7 +590,10 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         syncEnemyKeys();
       }, 900);
     } else {
-      api.patch({ kills: kills.current, enemiesLeft: enemies.current.filter((x) => x.alive).length });
+      api.patch({
+        kills: kills.current,
+        enemiesLeft: enemies.current.filter((x) => x.alive).length,
+      });
     }
   }
 
@@ -533,23 +609,15 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
     let killedRemote: string | null = null;
     let remoteDmg = 0;
     for (let p = 0; p < weapon.pellets; p++) {
-      const dir = new THREE.Vector3(
-        (Math.random() - 0.5) * 2 * spread,
-        (Math.random() - 0.5) * 2 * spread,
-        -1,
-      )
-        .normalize()
-        .applyQuaternion(camera.quaternion);
+      const dir = new THREE.Vector3((Math.random() - 0.5) * 2 * spread, (Math.random() - 0.5) * 2 * spread, -1).normalize().applyQuaternion(camera.quaternion);
       ray.set(camera.position, dir);
       ray.far = 160;
-      const hit = ray
-        .intersectObjects(scene.children, true)
-        .find((h) => {
-          const u = h.object.userData;
-          if (u.enemyId !== undefined) return enemies.current.some((e) => e.id === u.enemyId && e.alive);
-          if (u.remoteId !== undefined) return mode === "duel";
-          return !!u.solid;
-        });
+      const hit = ray.intersectObjects(scene.children, true).find((h) => {
+        const u = h.object.userData;
+        if (u.enemyId !== undefined) return enemies.current.some((e) => e.id === u.enemyId && e.alive);
+        if (u.remoteId !== undefined) return mode === "duel";
+        return !!u.solid;
+      });
       const end = hit ? hit.point.clone() : camera.position.clone().addScaledVector(dir, 150);
       if (p < 3) {
         const m = new THREE.Mesh(bulletGeo, bulletMat);
@@ -568,7 +636,6 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         if (en && en.alive) {
           landed = true;
           en.hp -= dmg;
-          en.flash = 0.08;
           addSpark(end, true);
           if (en.hp <= 0) killEnemy(en, true);
         }
@@ -582,10 +649,20 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
       }
     }
     if (killedRemote && remoteDmg > 0) {
-      sendEvent(net?.channelRef.current ?? null, { type: "duelhit", from: playerId(), to: killedRemote, dmg: remoteDmg });
+      sendEvent(net?.channelRef.current ?? null, {
+        type: "duelhit",
+        from: playerId(),
+        to: killedRemote,
+        dmg: remoteDmg,
+      });
     }
     if (landed) hits.current++;
-    api.patch({ ammo: ammo.current, shots: shots.current, hits: hits.current, ...(landed ? { hitMark: Date.now() } : {}) });
+    api.patch({
+      ammo: ammo.current,
+      shots: shots.current,
+      hits: hits.current,
+      ...(landed ? { hitMark: Date.now() } : {}),
+    });
     if (!weapon.auto) {
       firing.current = false;
       touch.current.firing = false;
@@ -596,13 +673,44 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
   async function waveDone(n: number) {
     if (clearedWave.current >= n) return;
     clearedWave.current = n;
-    let awarded = 0;
-    try {
-      awarded = (await props.onWaveCleared?.(n)) ?? 0;
-    } catch {
-      awarded = 0;
+    const finalDungeonWave = mode === "dungeon" && n >= DUNGEON_WAVES;
+    if (finalDungeonWave) {
+      over.current = true;
+      document.exitPointerLock?.();
     }
-    api.patch((h) => ({ banner: `WAVE ${n} CLEARED`, sub: awarded ? `+${awarded} CREDITS` : "Next wave incoming", earned: h.earned + awarded }));
+    let reward = { awarded: 0, experience: 0, levelsGained: 0, level: props.level ?? 1 };
+    try {
+      const savedReward = await props.onWaveCleared?.(n);
+      if (savedReward) reward = { ...reward, ...savedReward };
+    } catch (error) {
+      runRewardSaveFailed.current = true;
+      api.feed(error instanceof Error ? `REWARD SAVE FAILED: ${error.message}` : "REWARD SAVE FAILED");
+    }
+    runCredits.current += reward.awarded;
+    runExperience.current += reward.experience;
+    if (finalDungeonWave) {
+      api.patch((h) => ({
+        banner: null,
+        sub: null,
+        earned: h.earned + reward.awarded,
+        over: {
+          title: "DUNGEON COMPLETE",
+          lines: [
+            `All ${DUNGEON_WAVES} waves defeated`,
+            `Coins earned: ${runCredits.current}`,
+            `EXP earned: ${runExperience.current}`,
+            ...(runRewardSaveFailed.current ? ["Reward save failed; totals may be incomplete"] : []),
+            ...(reward.levelsGained > 0 ? [`LEVEL UP! You reached Level ${reward.level}`] : []),
+          ],
+        },
+      }));
+      return;
+    }
+    api.patch((h) => ({
+      banner: reward.levelsGained ? "LEVEL UP!" : `WAVE ${n} CLEARED`,
+      sub: reward.levelsGained ? `LEVEL ${reward.level} · +${reward.awarded} COINS · +${reward.experience} EXP` : reward.awarded ? `+${reward.awarded} COINS · +${reward.experience} EXP` : "Next wave incoming",
+      earned: h.earned + reward.awarded,
+    }));
     setTimeout(() => api.patch({ banner: null, sub: null }), 2500);
   }
 
@@ -694,7 +802,12 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         over.current = true;
         document.exitPointerLock?.();
         const acc = shots.current ? Math.round((hits.current / shots.current) * 100) : 0;
-        api.patch({ over: { title: "DRILL COMPLETE", lines: [`${kills.current} dummies down`, `${acc}% accuracy`, `${shots.current} shots fired`] } });
+        api.patch({
+          over: {
+            title: "DRILL COMPLETE",
+            lines: [`${kills.current} dummies down`, `${acc}% accuracy`, `${shots.current} shots fired`],
+          },
+        });
       }
     }
 
@@ -706,7 +819,6 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
 
     let aliveCount = 0;
     for (const e of enemies.current) {
-      if (e.flash > 0) e.flash -= dt;
       if (!e.alive) {
         e.fall = Math.min(e.fall + dt * 3, 2);
         continue;
@@ -768,7 +880,10 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
                 over.current = true;
                 document.exitPointerLock?.();
                 api.patch((h) => ({
-                  over: { title: "YOU DIED", lines: [`Reached wave ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`] },
+                  over: {
+                    title: "YOU DIED",
+                    lines: [`Reached wave ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`],
+                  },
                 }));
               } else {
                 respawnAt.current = clock.current + 5;
@@ -850,7 +965,13 @@ function World(props: ArenaProps & { api: Api; startRef: MutableRefObject<() => 
         if (coordinator) {
           const seed = Math.floor(Math.random() * 1e9);
           const n = wave.current + 1;
-          if (mode === "coop") sendEvent(net?.channelRef.current ?? null, { type: "wave", from: playerId(), wave: n, seed });
+          if (mode === "coop")
+            sendEvent(net?.channelRef.current ?? null, {
+              type: "wave",
+              from: playerId(),
+              wave: n,
+              seed,
+            });
           startWave(n, seed);
         } else {
           nextWaveAt.current = clock.current + 2; // wait for the coordinator's wave event
@@ -980,7 +1101,15 @@ export function Arena(props: ArenaProps) {
   const [controlMode, setControlMode] = useState<ControlMode | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const reloadRef = useRef<() => void>(() => {});
-  const touchInput = useRef<TouchInput>({ moveX: 0, moveY: 0, lookDX: 0, lookDY: 0, firing: false, jump: false, aiming: false });
+  const touchInput = useRef<TouchInput>({
+    moveX: 0,
+    moveY: 0,
+    lookDX: 0,
+    lookDY: 0,
+    firing: false,
+    jump: false,
+    aiming: false,
+  });
   const api = useMemo<Api>(
     () => ({
       patch: (p) => setHud((h) => ({ ...h, ...(typeof p === "function" ? p(h) : p) })),
@@ -1001,6 +1130,7 @@ export function Arena(props: ArenaProps) {
   const hitRecent = Date.now() - hud.hitMark < 180;
 
   const restart = () => {
+    props.onRestart?.();
     if (props.net && (props.mode === "duel" || props.mode === "coop")) {
       sendEvent(props.net.channelRef.current, { type: "restart", from: me });
     }
@@ -1026,19 +1156,17 @@ export function Arena(props: ArenaProps) {
     <div className="fixed inset-0 z-40 bg-background" data-scene-ready="1">
       <Canvas
         shadows
-        gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: map.night ? 1.25 : 1.05 }}
+        gl={{
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: map.night ? 1.25 : 1.05,
+        }}
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}
       >
         <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} controlMode={controlModeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} />
       </Canvas>
 
-      <TouchControls
-        input={touchInput.current}
-        scopedWeapon={weapon.scope}
-        active={controlMode === "mobile"}
-        onReload={() => reloadRef.current()}
-      />
+      <TouchControls input={touchInput.current} scopedWeapon={weapon.scope} active={controlMode === "mobile"} onReload={() => reloadRef.current()} />
 
       {hud.aiming && (
         <div className="fps-scope">
@@ -1055,15 +1183,7 @@ export function Arena(props: ArenaProps) {
           <div className="flex flex-col gap-2">
             <div className="fps-mode-chip">
               <span className="fps-status-dot" />
-              <span>
-                {props.mode === "train"
-                  ? "TRAINING"
-                  : props.mode === "duel"
-                    ? "1V1 DUEL"
-                    : props.mode === "coop"
-                      ? "CO-OP"
-                      : "DUNGEON"}
-              </span>
+              <span>{props.mode === "train" ? "TRAINING" : props.mode === "duel" ? "1V1 DUEL" : props.mode === "coop" ? "CO-OP" : "DUNGEON"}</span>
               <span className="fps-chip-divider" />
               <span className="fps-map-name">{map.name}</span>
             </div>
@@ -1094,9 +1214,7 @@ export function Arena(props: ArenaProps) {
               </div>
               <div className="fps-versus">VS</div>
               <div className="text-center">
-                <div className="fps-micro-label">
-                  {props.net?.roster.find((r) => r.id !== me)?.name ?? "Waiting…"}
-                </div>
+                <div className="fps-micro-label">{props.net?.roster.find((r) => r.id !== me)?.name ?? "Waiting…"}</div>
                 <div className="mso-num text-3xl text-[var(--mso-foe)]">
                   {Object.entries(hud.duel)
                     .filter(([k]) => k !== me)
@@ -1126,7 +1244,7 @@ export function Arena(props: ArenaProps) {
 
         {/* banner */}
         {hud.banner && (
-          <div className="fps-round-banner absolute left-1/2 top-[22%] -translate-x-1/2 text-center">
+          <div className={`fps-round-banner absolute left-1/2 top-[22%] -translate-x-1/2 text-center ${hud.banner === "LEVEL UP!" ? "fps-level-up" : ""}`}>
             <div className="mso-banner">{hud.banner}</div>
             {hud.sub && <div className="mso-sub">{hud.sub}</div>}
           </div>
@@ -1145,6 +1263,16 @@ export function Arena(props: ArenaProps) {
         {/* bottom HUD */}
         <div className="fps-bottom-hud absolute bottom-0 left-0 right-0 flex items-end justify-between p-5">
           <div className={`fps-health-panel ${hud.hp <= 35 ? "fps-health-critical" : ""}`}>
+            <div className="fps-player-identity">
+              <CharacterPreview compact shirtId={props.equippedShirt ?? null} hatId={props.equippedHat ?? null} />
+              <div>
+                <span className="fps-micro-label">LEVEL {props.level ?? 1}</span>
+                <span className="fps-player-name">
+                  <i />
+                  {props.playerName}
+                </span>
+              </div>
+            </div>
             <div className="flex items-baseline justify-between">
               <span className="fps-micro-label">VITALS</span>
               <span className="fps-health-value">
@@ -1152,14 +1280,7 @@ export function Arena(props: ArenaProps) {
                 <small> / 100</small>
               </span>
             </div>
-            <div
-              className="fps-health-track mt-2"
-              role="progressbar"
-              aria-label="Health"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={hud.hp}
-            >
+            <div className="fps-health-track mt-2" role="progressbar" aria-label="Health" aria-valuemin={0} aria-valuemax={100} aria-valuenow={hud.hp}>
               <div
                 className="mso-bar-fill"
                 style={{
@@ -1169,10 +1290,7 @@ export function Arena(props: ArenaProps) {
               />
             </div>
             <div className="fps-player-row mt-3 flex items-center justify-between">
-              <span className="fps-player-name">
-                <i />
-                {props.playerName}
-              </span>
+              <span className="fps-player-name">{props.playerName}</span>
               <span className="fps-match-stat">
                 <span>
                   <b>{hud.kills}</b> {props.mode === "train" ? "HITS" : "KILLS"}
@@ -1210,10 +1328,11 @@ export function Arena(props: ArenaProps) {
                 </>
               )}
             </div>
-            <div className="fps-ammo-hint">
-              [ R ] RELOAD{weapon.scope ? "  ·  [ RMB ] SCOPE" : ""}
-            </div>
+            <div className="fps-ammo-hint">[ R ] RELOAD{weapon.scope ? "  ·  [ RMB ] SCOPE" : ""}</div>
           </div>
+        </div>
+        <div className="fps-experience-position">
+          <ExperienceBar level={props.level ?? 1} experience={props.experience ?? 0} compact />
         </div>
 
         {/* paused / click to fight */}
@@ -1227,8 +1346,12 @@ export function Arena(props: ArenaProps) {
             <h2 className="mso-banner">{hasStarted ? "PAUSED" : "CHOOSE YOUR DEVICE"}</h2>
             <p className="font-bold">{hasStarted ? "Choose your controls, then jump back in" : "How are you playing Mexican Standof?"}</p>
             <div className="flex flex-wrap justify-center gap-3">
-              <Button type="button" aria-pressed={controlMode === "pc"} className={`mso-btn ${controlMode === "pc" ? "" : "mso-btn-ghost"}`} onClick={() => chooseControlMode("pc")}>PC</Button>
-              <Button type="button" aria-pressed={controlMode === "mobile"} className={`mso-btn ${controlMode === "mobile" ? "" : "mso-btn-ghost"}`} onClick={() => chooseControlMode("mobile")}>MOBILE</Button>
+              <Button type="button" aria-pressed={controlMode === "pc"} className={`mso-btn ${controlMode === "pc" ? "" : "mso-btn-ghost"}`} onClick={() => chooseControlMode("pc")}>
+                PC
+              </Button>
+              <Button type="button" aria-pressed={controlMode === "mobile"} className={`mso-btn ${controlMode === "mobile" ? "" : "mso-btn-ghost"}`} onClick={() => chooseControlMode("mobile")}>
+                MOBILE
+              </Button>
             </div>
             {controlMode && (
               <p className="max-w-md text-center text-sm text-muted-foreground">
@@ -1238,8 +1361,14 @@ export function Arena(props: ArenaProps) {
               </p>
             )}
             <div className="pointer-events-auto flex gap-3">
-              <Button type="button" className="mso-btn" disabled={!controlMode} onClick={enterFight}>{hasStarted ? "FIGHT" : "START"}</Button>
-              {hasStarted && <Button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>Leave</Button>}
+              <Button type="button" className="mso-btn" disabled={!controlMode} onClick={enterFight}>
+                {hasStarted ? "FIGHT" : "START"}
+              </Button>
+              {hasStarted && (
+                <Button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>
+                  Leave
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -1249,11 +1378,19 @@ export function Arena(props: ArenaProps) {
           <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/75">
             <h2 className="mso-banner text-7xl">{hud.over.title}</h2>
             <div className="mso-panel flex flex-col gap-1 px-8 py-4 text-center text-lg font-bold">
-              {hud.over.lines.map((l) => <div key={l}>{l}</div>)}
+              {hud.over.lines.map((l) => (
+                <div key={l}>{l}</div>
+              ))}
             </div>
             <div className="flex gap-3">
-              <button type="button" className="mso-btn" onClick={restart}>PLAY AGAIN</button>
-              <button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>BACK TO LOBBY</button>
+              {hud.over.title !== "DUNGEON COMPLETE" && (
+                <button type="button" className="mso-btn" onClick={restart}>
+                  PLAY AGAIN
+                </button>
+              )}
+              <button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>
+                BACK TO LOBBY
+              </button>
             </div>
           </div>
         )}

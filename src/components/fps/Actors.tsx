@@ -26,7 +26,6 @@ export type EnemyRuntime = {
   moving: boolean;
   goalX: number;
   goalZ: number;
-  flash: number;
 };
 
 const G = {
@@ -49,22 +48,6 @@ export const TIER_LOOK: Record<Tier, { cloth: THREE.MeshStandardMaterial; scale:
   runner: { cloth: new THREE.MeshStandardMaterial({ color: "#2f6f8f", roughness: 0.9 }), scale: 0.9 },
   brute: { cloth: new THREE.MeshStandardMaterial({ color: "#8f2f2f", roughness: 0.9 }), scale: 1.35 },
 };
-
-const hitMat = new THREE.MeshStandardMaterial({ color: "#ffffff", emissive: "#ffffff", emissiveIntensity: 1 });
-
-function syncHitFlash(root: THREE.Group, active: boolean) {
-  root.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    if (active) {
-      if (!mesh.userData.baseMat) mesh.userData.baseMat = mesh.material;
-      mesh.material = hitMat;
-    } else if (mesh.userData.baseMat) {
-      mesh.material = mesh.userData.baseMat as THREE.Material;
-      delete mesh.userData.baseMat;
-    }
-  });
-}
 
 type Tag = Record<string, unknown>;
 
@@ -135,7 +118,6 @@ export function EnemyMesh({ e }: { e: EnemyRuntime }) {
     const g = root.current;
     const b = body.current;
     if (!g || !b) return;
-    if (!e.alive) syncHitFlash(b, false);
     g.position.set(e.x, 0, e.z);
     g.rotation.y = e.ry;
     if (!e.alive) {
@@ -151,8 +133,6 @@ export function EnemyMesh({ e }: { e: EnemyRuntime }) {
     swing(limbs, w);
     b.position.y = e.moving ? Math.abs(Math.cos(t)) * 0.05 : 0;
     if (limbs.rArm.current && e.cd > 0 && e.cd > 0.8) limbs.rArm.current.rotation.x = -1.6;
-    // hit flash
-    syncHitFlash(b, e.flash > 0);
   });
 
   return (

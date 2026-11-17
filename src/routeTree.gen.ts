@@ -14,6 +14,7 @@ import { Route as ArmoryRouteImport } from './routes/armory'
 import { Route as CoOpRouteImport } from './routes/co-op'
 import { Route as MapsRouteImport } from './routes/maps'
 import { Route as PlayRouteImport } from './routes/play'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as TrainRouteImport } from './routes/train'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,11 @@ const PlayRoute = PlayRouteImport.update({
   path: '/play',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrainRoute = TrainRouteImport.update({
   id: '/train',
   path: '/train',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/co-op': typeof CoOpRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
+  '/profile': typeof ProfileRoute
   '/train': typeof TrainRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/co-op': typeof CoOpRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
+  '/profile': typeof ProfileRoute
   '/train': typeof TrainRoute
 }
 export interface FileRoutesById {
@@ -70,14 +78,24 @@ export interface FileRoutesById {
   '/co-op': typeof CoOpRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
+  '/profile': typeof ProfileRoute
   '/train': typeof TrainRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/train'
+  fullPaths:
+    '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/profile' | '/train'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/train'
-  id: '__root__' | '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/train'
+  to: '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/profile' | '/train'
+  id:
+    | '__root__'
+    | '/'
+    | '/armory'
+    | '/co-op'
+    | '/maps'
+    | '/play'
+    | '/profile'
+    | '/train'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -86,6 +104,7 @@ export interface RootRouteChildren {
   CoOpRoute: typeof CoOpRoute
   MapsRoute: typeof MapsRoute
   PlayRoute: typeof PlayRoute
+  ProfileRoute: typeof ProfileRoute
   TrainRoute: typeof TrainRoute
 }
 
@@ -126,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/train': {
       id: '/train'
       path: '/train'
@@ -142,6 +168,7 @@ const rootRouteChildren: RootRouteChildren = {
   CoOpRoute: CoOpRoute,
   MapsRoute: MapsRoute,
   PlayRoute: PlayRoute,
+  ProfileRoute: ProfileRoute,
   TrainRoute: TrainRoute,
 }
 export const routeTree = rootRouteImport

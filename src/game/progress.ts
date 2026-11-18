@@ -714,6 +714,7 @@ export function redeemCode(input: string): { code: string; reward: string } {
       redeemedCodes: [...state.redeemedCodes, code],
     };
     saveRedeemedCodes(state.redeemedCodes);
+    if (state.kind === "guest") saveGuest(state);
     notify();
     return { code, reward: "Gun Racing mode unlocked" };
   }

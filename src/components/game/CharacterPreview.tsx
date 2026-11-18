@@ -50,7 +50,14 @@ export function CharacterPreview({
         role="group"
         aria-label={`Rotatable blocky character wearing ${shirt?.name ?? "standard uniform"} and holding ${WEAPONS[weaponId].name}`}
       >
-        <Canvas camera={{ position: [3.3, 2.2, 4], fov: 34 }} dpr={[1, 1.5]}>
+        <Canvas
+          camera={{ position: [3.3, 2.2, 4], fov: 34 }}
+          dpr={[1, 1.5]}
+          gl={{ antialias: true, powerPreference: "high-performance" }}
+          onCreated={({ gl }) => {
+            gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+          }}
+        >
           <color attach="background" args={["#17242b"]} />
           <ambientLight intensity={1.5} />
           <directionalLight position={[3, 6, 4]} intensity={3} castShadow />

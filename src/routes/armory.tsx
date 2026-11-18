@@ -303,7 +303,15 @@ function ArmoryPage() {
                 toast.error(error instanceof Error ? error.message : "Could not redeem code");
               }
             }}>
-              <input aria-label="Enter reward code" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ENTER CODE" maxLength={32} />
+              <input
+                aria-label="Enter reward code"
+                value={code}
+                onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 32))}
+                placeholder="ENTER CODE"
+                maxLength={32}
+                autoCapitalize="characters"
+                spellCheck={false}
+              />
               <button className="mso-btn" type="submit" disabled={!code.trim()}>REDEEM</button>
             </form>
             <div className="codes-status">

@@ -56,13 +56,6 @@ const MODES = [
     color: "var(--primary)",
   },
   {
-    to: "/racing",
-    title: "GUN RACING",
-    sub: "Drift, boost and race with a mounted gun.",
-    tag: "ARCADE",
-    color: "var(--mso-foe)",
-  },
-  {
     to: "/cooking",
     title: "COOK-OFF",
     sub: "Grab ingredients. Cook fast. Serve the crowd.",
@@ -143,6 +136,24 @@ function Hub() {
               </div>
             </Link>
           ))}
+          {p.racingUnlocked && (
+            <Link
+              to="/racing"
+              className="mso-card hub-mode-card group"
+              style={{ "--mode-color": "var(--mso-foe)" } as CSSProperties}
+            >
+              <div className="hub-mode-top">
+                <span className="hub-mode-tag">ARCADE</span>
+                <span className="hub-mode-arrow" aria-hidden="true">↗</span>
+              </div>
+              <div className="mso-display mt-8 text-3xl">GUN RACING</div>
+              <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Drift, boost and take down rival cars.
+              </div>
+              <div className="hub-mode-rule" />
+              <div className="hub-mode-cta">ENTER MODE <span aria-hidden="true">→</span></div>
+            </Link>
+          )}
         </section>
 
         <section className="mt-4 grid gap-4 md:grid-cols-2" aria-label="Loadout and maps">

@@ -8,6 +8,7 @@ import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
 import { DIFFICULTIES, type Difficulty, type DungeonVariant } from "@/game/sim/waves";
 import { WEAPONS } from "@/game/sim/weapons";
+import { ARMOUR_REDUCTION } from "@/game/sim/cosmetics";
 import {
   awardDungeonLoot,
   awardWave,
@@ -39,6 +40,7 @@ function PlayPage() {
   const [diff, setDiff] = useState<Difficulty>("easy");
   const [dungeonVariant, setDungeonVariant] = useState<DungeonVariant>("gunfight");
   const [playing, setPlaying] = useState(false);
+  const [equippedKnife, setEquippedKnife] = useState<string | null>(p.loot.crafted.find((id) => id.includes("sword")) ?? null);
   const runId = useRef<string | null>(null);
 
   if (playing) {
@@ -52,6 +54,9 @@ function PlayPage() {
         playerName={p.name}
         credits={p.credits}
         hotbar={p.loot.hotbar}
+        ownedSwords={p.loot.crafted.filter((id) => id.includes("sword"))}
+        equippedKnife={equippedKnife}
+        onEquipKnife={setEquippedKnife}
         onSelectHotbarSlot={selectHotbarSlot}
         onDropHotbarItem={dropHotbarItem}
         level={p.level}
@@ -60,6 +65,7 @@ function PlayPage() {
         equippedHat={p.equippedHat}
         equippedPants={p.equippedPants}
         equippedBoots={p.equippedBoots}
+        armourReduction={ARMOUR_REDUCTION[p.equippedShirt ?? ""] ?? 0}
         onWaveCleared={async (wave) => {
           const res = await awardWave(map, diff, wave, runId.current);
           runId.current = res.runId;

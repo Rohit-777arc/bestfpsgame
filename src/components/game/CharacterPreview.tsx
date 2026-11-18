@@ -154,7 +154,12 @@ export function CharacterPreview({
         d="M52 91c0-37 18-55 42-55 27 0 41 21 38 56-8-15-21-19-34-22-17-4-30 2-46 21Z"
         fill="#382c2a"
       />
-      <path d="M70 95h8m24 0h8" stroke="#2b292a" strokeWidth="4" strokeLinecap="round" />
+      <g className="profile-moving-eyes">
+        <ellipse cx="74" cy="95" rx="5" ry="7" fill="#f2e6d2" />
+        <ellipse cx="106" cy="95" rx="5" ry="7" fill="#f2e6d2" />
+        <circle cx="74" cy="96" r="2.2" fill="#24313a" />
+        <circle cx="106" cy="96" r="2.2" fill="#24313a" />
+      </g>
       <path
         d="M83 115q7 5 14 0"
         fill="none"
@@ -198,6 +203,8 @@ function BlockyOperator({
   const rightArm = useRef<THREE.Group>(null);
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
+  const leftEye = useRef<THREE.Mesh>(null);
+  const rightEye = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
     const time = clock.elapsedTime;
     if (body.current) body.current.position.y = 0.03 + Math.sin(time * 1.7) * 0.025;
@@ -205,6 +212,10 @@ function BlockyOperator({
     if (rightArm.current) rightArm.current.rotation.x = -Math.sin(time * 1.7) * 0.07;
     if (leftLeg.current) leftLeg.current.rotation.x = -Math.sin(time * 1.7) * 0.045;
     if (rightLeg.current) rightLeg.current.rotation.x = Math.sin(time * 1.7) * 0.045;
+    const eyeX = Math.sin(time * 0.75) * 0.018;
+    const eyeY = Math.max(-0.012, Math.min(0.012, Math.cos(time * 0.9) * 0.012));
+    if (leftEye.current) leftEye.current.position.set(-0.17 + eyeX, 1.9 + eyeY, 0.29);
+    if (rightEye.current) rightEye.current.position.set(0.17 + eyeX, 1.9 + eyeY, 0.29);
   });
   const weapon = WEAPONS[weaponId];
   const skin = "#c8a77a";
@@ -291,13 +302,13 @@ function BlockyOperator({
         <boxGeometry args={[0.6, 0.16, 0.56]} />
         <meshStandardMaterial color="#382c2a" />
       </mesh>
-      <mesh position={[0, 1.9, 0.276]}>
+      <mesh ref={leftEye} position={[-0.17, 1.9, 0.29]}>
         <boxGeometry args={[0.08, 0.09, 0.025]} />
-        <meshStandardMaterial color="#182326" />
+        <meshStandardMaterial color="#182326" emissive="#2d5560" emissiveIntensity={0.35} />
       </mesh>
-      <mesh position={[0.17, 1.9, 0.276]}>
+      <mesh ref={rightEye} position={[0.17, 1.9, 0.29]}>
         <boxGeometry args={[0.08, 0.09, 0.025]} />
-        <meshStandardMaterial color="#182326" />
+        <meshStandardMaterial color="#182326" emissive="#2d5560" emissiveIntensity={0.35} />
       </mesh>
       <mesh position={[-0.17, 1.9, 0.29]}>
         <boxGeometry args={[0.09, 0.045, 0.025]} />

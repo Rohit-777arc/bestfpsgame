@@ -120,7 +120,7 @@ const oldBrass = new THREE.MeshStandardMaterial({ color: "#665336", metalness: 0
 
 /** A cramped, repeating stone chamber with a stairwell marking the next room. */
 export function UndergroundScene({ room }: { room: number }) {
-  const half = 18;
+  const half = 24;
   const tileLines = Array.from({ length: 17 }, (_, index) => index - 8);
   const roomTint = room % 3 === 0 ? "#514b3c" : room % 2 === 0 ? "#625d49" : "#6b6752";
 
@@ -128,8 +128,8 @@ export function UndergroundScene({ room }: { room: number }) {
     <>
       <color attach="background" args={["#11120f"]} />
       <fog attach="fog" args={["#171811", 9, 30]} />
-      <hemisphereLight args={["#a6a18a", "#29271c", 0.92]} />
-      <ambientLight color="#b4ad86" intensity={0.48} />
+      <hemisphereLight args={["#c6c09d", "#343023", 1.15]} />
+      <ambientLight color="#d1caa0" intensity={0.72} />
 
       <mesh position={[0, -0.32, 0]} receiveShadow userData={{ solid: true }}>
         <boxGeometry args={[half * 2, 0.6, half * 2]} />
@@ -200,8 +200,8 @@ export function UndergroundScene({ room }: { room: number }) {
           <pointLight
             position={[x, 4.8, 2]}
             color={index === room % 3 ? "#aa8f5c" : "#e5dfb8"}
-            intensity={index === room % 3 ? 2.6 : 3.2}
-            distance={17}
+            intensity={index === room % 3 ? 4.2 : 5.2}
+            distance={24}
           />
         </group>
       ))}

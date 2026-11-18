@@ -41,7 +41,21 @@ import {
 const STORE_KEY = "mso-progress-v1";
 const IMPORT_KEY = "mso-imported-v1";
 const LOOT_KEY_PREFIX = "mso-dungeon-loot-v1:";
+const CODES_KEY = "mso-redeemed-codes-v1";
 let lootStorageKey = `${LOOT_KEY_PREFIX}guest`;
+
+function loadRedeemedCodes(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(CODES_KEY) ?? "[]");
+    return Array.isArray(value) ? value.filter((code): code is string => typeof code === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRedeemedCodes(codes: string[]) {
+  localStorage.setItem(CODES_KEY, JSON.stringify(codes));
+}
 
 function loadLoot(key: string): LootInventory {
   try {
@@ -73,7 +87,8 @@ function loadLoot(key: string): LootInventory {
         ["shard", loot.shards],
         ...loot.crafted
           .filter(
-            (id): id is "scrap-sword" | "bone-armor" => id === "scrap-sword" || id === "bone-armor",
+            (id): id is "scrap-sword" | "ember-sword" | "bone-armor" =>
+              id === "scrap-sword" || id === "ember-sword" || id === "bone-armor",
           )
           .map((id): [HotbarItemId, number] => [id, 1]),
       ];
@@ -100,7 +115,7 @@ function saveLoot(loot: LootInventory) {
 function removeLootItem(loot: LootInventory, item: HotbarItemId): void {
   if (item === "book") loot.books = Math.max(0, loot.books - 1);
   else if (item === "shard") loot.shards = Math.max(0, loot.shards - 1);
-  else if (item === "scrap-sword" || item === "bone-armor") {
+  else if (item === "scrap-sword" || item === "ember-sword" || item === "bone-armor") {
     loot.crafted = loot.crafted.filter((crafted) => crafted !== item);
     loot.enchanted = loot.enchanted.filter((enchanted) => !enchanted.startsWith(`${item}:`));
   } else {
@@ -126,6 +141,8 @@ export interface Progress {
   equippedPants: CosmeticId | null;
   equippedBoots: CosmeticId | null;
   loot: LootInventory;
+  redeemedCodes: string[];
+  racingUnlocked: boolean;
   email?: string | undefined;
 }
 
@@ -149,6 +166,8 @@ let state: Progress = {
   equippedPants: null,
   equippedBoots: null,
   loot: structuredClone(EMPTY_LOOT_INVENTORY),
+  redeemedCodes: [],
+  racingUnlocked: false,
 };
 const listeners = new Set<Listener>();
 
@@ -195,6 +214,8 @@ function loadGuest(): Progress {
           ? (p.equippedBoots as CosmeticId)
           : null,
         loot: loadLoot(lootStorageKey),
+        redeemedCodes: loadRedeemedCodes(),
+        racingUnlocked: loadRedeemedCodes().includes("GUNRACE"),
       };
     }
   } catch {
@@ -218,6 +239,8 @@ function loadGuest(): Progress {
     equippedPants: null,
     equippedBoots: null,
     loot: loadLoot(lootStorageKey),
+    redeemedCodes: loadRedeemedCodes(),
+    racingUnlocked: loadRedeemedCodes().includes("GUNRACE"),
   };
   saveGuest(fresh);
   return fresh;
@@ -287,6 +310,8 @@ export async function initProgress(): Promise<void> {
             ? profile.equippedBoots
             : null,
         loot: loadLoot(lootStorageKey),
+        redeemedCodes: loadRedeemedCodes(),
+        racingUnlocked: loadRedeemedCodes().includes("GUNRACE"),
         email: data.session.user.email ?? undefined,
       };
       notify();
@@ -670,6 +695,29 @@ export function enchantDungeonItem(itemId: string, enchantmentId: string): void 
   state = { ...state, loot };
   saveLoot(loot);
   notify();
+}
+
+export function redeemCode(input: string): { code: string; reward: string } {
+  const code = input.trim().toUpper();
+  if (state.redeemedCodes.includes(code)) throw new Error("That code has already been redeemed");
+  if (code === "FREEMONEY") {
+    state = { ...state, credits: state.credits + 500, redeemedCodes: [...state.redeemedCodes, code] };
+    saveRedeemedCodes(state.redeemedCodes);
+    if (state.kind === "guest") saveGuest(state);
+    notify();
+    return { code, reward: "+500 credits" };
+  }
+  if (code === "GUNRACE") {
+    state = {
+      ...state,
+      racingUnlocked: true,
+      redeemedCodes: [...state.redeemedCodes, code],
+    };
+    saveRedeemedCodes(state.redeemedCodes);
+    notify();
+    return { code, reward: "Gun Racing mode unlocked" };
+  }
+  throw new Error("Unknown code");
 }
 
 // ---- Auth ----

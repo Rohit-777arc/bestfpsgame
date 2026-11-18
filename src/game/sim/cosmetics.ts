@@ -20,6 +20,14 @@ export interface Cosmetic {
 }
 
 export const COSMETICS = [
+  { id: "wood-armour", name: "Wood Armour", slot: "shirt", price: 30, color: "#7b4f2a", style: "armor" },
+  { id: "leather-armour", name: "Leather Armour", slot: "shirt", price: 55, color: "#8b5a36", style: "armor" },
+  { id: "gold-armour", name: "Gold Armour", slot: "shirt", price: 90, color: "#d7aa38", style: "armor" },
+  { id: "iron-armour", name: "Iron Armour", slot: "shirt", price: 130, color: "#9aa6aa", style: "armor" },
+  { id: "diamond-armour", name: "Diamond Armour", slot: "shirt", price: 180, color: "#68d7d2", style: "armor" },
+  { id: "obsidian-armour", name: "Obsidian Armour", slot: "shirt", price: 240, color: "#4a3d67", style: "armor" },
+  { id: "platinum-armour", name: "Platinum Armour", slot: "shirt", price: 320, color: "#dce2e4", style: "armor" },
+  { id: "opgod-armour", name: "OP GOD Armour", slot: "shirt", price: 500, color: "#f4cf34", style: "armor" },
   {
     id: "field-shirt",
     name: "Field Shirt",
@@ -110,3 +118,14 @@ export function isCosmeticId(id: string): id is CosmeticId {
 export function getCosmetic(id: string | null): Cosmetic | undefined {
   return COSMETICS.find((item) => item.id === id);
 }
+
+export const ARMOUR_REDUCTION: Record<string, number> = {
+  "wood-armour": 2,
+  "leather-armour": 6,
+  "gold-armour": 12,
+  "iron-armour": 18,
+  "diamond-armour": 24,
+  "obsidian-armour": 32,
+  "platinum-armour": 45,
+  "opgod-armour": 60,
+};

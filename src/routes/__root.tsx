@@ -96,8 +96,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Mexican Standof — Browser FPS" },
-      { name: "description", content: "Wave dungeons, a weapon armory, aim training and 1v1 duels with friends — right in your browser." },
+      { title: "Mexican Standof — Browser FPS & Arcade Playground" },
+      { name: "description", content: "Play first-person dungeons, aim drills, friend duels, car and bike challenges, and cooking battles right in your browser." },
     ],
     links: [
       {

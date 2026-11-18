@@ -5,6 +5,7 @@ export type HotbarItemId =
   | "book"
   | "shard"
   | "scrap-sword"
+  | "ember-sword"
   | "bone-armor";
 
 export type HotbarItem = {
@@ -19,6 +20,7 @@ export const HOTBAR_ITEMS: Record<HotbarItemId, HotbarItem> = {
   book: { name: "Enchant Book", rarity: 2 },
   shard: { name: "Enchant Shard", rarity: 3 },
   "scrap-sword": { name: "Scrap Sword", rarity: 2 },
+  "ember-sword": { name: "Ember Sword", rarity: 3 },
   "bone-armor": { name: "Bone Armor", rarity: 2 },
 };
 

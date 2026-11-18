@@ -8,16 +8,16 @@ import { DIFFICULTIES } from "@/game/sim/waves";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Mexican Standof — Browser FPS: Dungeons, Duels & Aim Training" },
+      { title: "Mexican Standof — Browser FPS: Dungeons, Duels & Arcade Modes" },
       {
         name: "description",
         content:
-          "Clear dungeon waves for credits and XP, customize your operator, unlock weapons, train your aim, and duel friends. Free in your browser.",
+          "Clear dungeon waves, customize your operator, unlock weapons, race cars and bikes, train your aim, and duel friends. Free in your browser.",
       },
-      { property: "og:title", content: "Mexican Standof — Browser FPS" },
+      { property: "og:title", content: "Mexican Standof — Browser FPS & Arcade Playground" },
       {
         property: "og:description",
-        content: "Five-wave dungeons, operator profiles and cosmetics, a weapon armory, aim training and friend duels.",
+        content: "Five-wave dungeons, operator profiles and cosmetics, a weapon armory, aim training, friend duels and road challenges.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -46,6 +46,27 @@ const MODES = [
     title: "TRAINING",
     sub: "Moving dummies. Sharpen your aim.",
     tag: "PRACTICE",
+    color: "var(--accent)",
+  },
+  {
+    to: "/vehicles",
+    title: "VEHICLES",
+    sub: "Street cars and motorbikes.",
+    tag: "NEW",
+    color: "var(--primary)",
+  },
+  {
+    to: "/racing",
+    title: "GUN RACING",
+    sub: "Drift, boost and race with a mounted gun.",
+    tag: "ARCADE",
+    color: "var(--mso-foe)",
+  },
+  {
+    to: "/cooking",
+    title: "COOK-OFF",
+    sub: "Grab ingredients. Cook fast. Serve the crowd.",
+    tag: "CHAOS",
     color: "var(--accent)",
   },
 ] as const;

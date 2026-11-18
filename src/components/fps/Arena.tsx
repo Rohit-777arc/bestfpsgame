@@ -50,12 +50,16 @@ export interface ArenaProps {
   equippedHat?: string | null;
   equippedPants?: string | null;
   equippedBoots?: string | null;
+  armourReduction?: number;
   net?: NetLink;
   onWaveCleared?: (wave: number) => Promise<{ awarded: number; experience: number; levelsGained?: number; level?: number }> | { awarded: number; experience: number; levelsGained?: number; level?: number } | undefined;
   onExperienceCollected?: (amount: number) => Promise<{ levelsGained: number; level: number }>;
   onDungeonKill?: (tier: "grunt" | "runner" | "brute" | "enchanter") => void;
   onBookFound?: () => void;
   hotbar: HotbarInventory;
+  ownedSwords?: string[];
+  equippedKnife?: string | null;
+  onEquipKnife?: (itemId: string) => void;
   onSelectHotbarSlot: (slot: number) => void;
   onDropHotbarItem: () => boolean;
   onToggleAvatar?: () => void;
@@ -151,6 +155,8 @@ function World(
   const { mode, difficulty, net, api } = props;
   const underground = mode === "dungeon" && props.dungeonVariant === "underground";
   const weapon = WEAPONS[props.weapon];
+  const reducedDamage = (damage: number) =>
+    Math.max(1, Math.round(damage * (1 - (props.armourReduction ?? 0) / 100)));
   const { camera, scene, gl } = useThree();
   const cam = camera as THREE.PerspectiveCamera;
 
@@ -442,7 +448,7 @@ function World(
         }
       } else if (e.type === "duelhit" && mode === "duel") {
         if (e.to !== playerId() || dead.current || over.current) return;
-        hp.current = Math.max(0, hp.current - e.dmg);
+        hp.current = Math.max(0, hp.current - reducedDamage(e.dmg));
         api.patch({ hp: hp.current, hurt: Date.now() });
         if (hp.current <= 0) {
           dead.current = true;
@@ -1022,7 +1028,7 @@ function World(
           fx.current?.add(tracer);
           tracers.current.push({ m: tracer, dir: direction.clone(), left: travel });
           if (hitPlayer && !dead.current) {
-            hp.current = Math.max(0, hp.current - e.damage);
+            hp.current = Math.max(0, hp.current - reducedDamage(e.damage));
             api.patch({ hp: hp.current, hurt: Date.now() });
             if (hp.current <= 0) {
               dead.current = true;
@@ -1068,7 +1074,7 @@ function World(
         magicBolt.position.copy(origin);
         fx.current?.add(magicBolt);
         tracers.current.push({ m: magicBolt, dir: direction, left: origin.distanceTo(target) });
-        hp.current = Math.max(0, hp.current - e.damage);
+        hp.current = Math.max(0, hp.current - reducedDamage(e.damage));
         addSpark(target, false, true);
         for (let particle = 0; particle < 4; particle++) {
           addSpark(
@@ -1110,7 +1116,7 @@ function World(
         e.ry = Math.atan2(dx, dz);
         if (e.cd <= 0 && chasing.local && !dead.current && Math.abs(me.y - EYE) < 2.2) {
           e.cd = 1.1;
-          hp.current = Math.max(0, hp.current - Math.max(2, Math.round(e.damage * 0.55)));
+          hp.current = Math.max(0, hp.current - reducedDamage(Math.max(2, Math.round(e.damage * 0.55))));
           api.patch({ hp: hp.current, hurt: Date.now() });
           if (hp.current <= 0) {
             dead.current = true;
@@ -1367,6 +1373,7 @@ function World(
 export function Arena(props: ArenaProps) {
   const weapon = WEAPONS[props.weapon];
   const [hud, setHud] = useState<Hud>(() => initialHud(weapon.mag));
+  const [knifeMenu, setKnifeMenu] = useState(false);
   const feedId = useRef(0);
   const startRef = useRef<() => void>(() => {});
   const resumeRef = useRef<() => void>(() => {});
@@ -1397,6 +1404,14 @@ export function Arena(props: ArenaProps) {
     }),
     [],
   );
+
+  useEffect(() => {
+    const openKnifeMenu = (event: KeyboardEvent) => {
+      if (event.code === "KeyF") setKnifeMenu((open) => !open);
+    };
+    addEventListener("keydown", openKnifeMenu);
+    return () => removeEventListener("keydown", openKnifeMenu);
+  }, []);
 
   const paused = !hud.locked && !hud.over;
   const map = MAPS[props.map];
@@ -1718,6 +1733,30 @@ export function Arena(props: ArenaProps) {
         <div className="fps-experience-position">
           <ExperienceBar level={props.level ?? 1} experience={props.experience ?? 0} compact />
         </div>
+
+        {knifeMenu && (
+          <div className="knife-selection" role="dialog" aria-label="Choose knife">
+            <div className="hub-info-kicker">F · KNIFE LOADOUT</div>
+            <h2 className="mso-display text-2xl">SELECT YOUR SWORD</h2>
+            <div className="knife-options">
+              {(props.ownedSwords?.length ? props.ownedSwords : ["scrap-sword"]).map((itemId) => (
+                <button
+                  type="button"
+                  key={itemId}
+                  className={props.equippedKnife === itemId ? "knife-option knife-equipped" : "knife-option"}
+                  onClick={() => {
+                    props.onEquipKnife?.(itemId);
+                    setKnifeMenu(false);
+                  }}
+                >
+                  <span className="knife-blade" />
+                  <b>{itemId.replaceAll("-", " ").toUpperCase()}</b>
+                  {props.equippedKnife === itemId && <small>EQUIPPED</small>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* paused / click to fight */}
         {paused && (

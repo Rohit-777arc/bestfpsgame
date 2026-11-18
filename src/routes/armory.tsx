@@ -13,8 +13,9 @@ import {
   setEquippedCosmetic,
   craftDungeonItem,
   enchantDungeonItem,
+  redeemCode,
 } from "@/game/progress";
-import { COSMETICS, type CosmeticId } from "@/game/sim/cosmetics";
+import { ARMOUR_REDUCTION, COSMETICS, type CosmeticId } from "@/game/sim/cosmetics";
 import { canCraft, canEnchant, CRAFTING_RECIPES, ENCHANTMENTS } from "@/game/sim/dungeonLoot";
 
 export const Route = createFileRoute("/armory")({
@@ -46,10 +47,12 @@ function ArmoryPage() {
   const p = useProgress();
   const [busy, setBusy] = useState<WeaponId | null>(null);
   const [busyArmor, setBusyArmor] = useState<CosmeticId | null>(null);
-  const [section, setSection] = useState<"weapons" | "armor" | "crafting" | "enchanting">(
+  const [section, setSection] = useState<"weapons" | "armor" | "workshop" | "codes">(
     "weapons",
   );
   const [busyLoot, setBusyLoot] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [portalItem, setPortalItem] = useState<string | null>(null);
   const equippedBySlot = {
     shirt: p.equippedShirt,
     hat: p.equippedHat,
@@ -112,6 +115,8 @@ function ArmoryPage() {
     setBusyLoot(key);
     try {
       enchantDungeonItem(itemId, enchantmentId);
+      setPortalItem(`${itemId}:${enchantmentId}`);
+      window.setTimeout(() => setPortalItem(null), 1400);
       toast.success("Enchantment applied");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not enchant item");
@@ -129,21 +134,21 @@ function ArmoryPage() {
           <button type="button" className={`mso-btn ${section === "armor" ? "" : "mso-btn-ghost"}`} role="tab" aria-selected={section === "armor"} onClick={() => setSection("armor")}>ARMOR & OUTFITS</button>
           <button
             type="button"
-            className={`mso-btn ${section === "crafting" ? "" : "mso-btn-ghost"}`}
+            className={`mso-btn ${section === "workshop" ? "" : "mso-btn-ghost"}`}
             role="tab"
-            aria-selected={section === "crafting"}
-            onClick={() => setSection("crafting")}
+            aria-selected={section === "workshop"}
+            onClick={() => setSection("workshop")}
           >
-            CRAFTING
+            CRAFT & ENCHANT
           </button>
           <button
             type="button"
-            className={`mso-btn ${section === "enchanting" ? "" : "mso-btn-ghost"}`}
+            className={`mso-btn ${section === "codes" ? "" : "mso-btn-ghost"}`}
             role="tab"
-            aria-selected={section === "enchanting"}
-            onClick={() => setSection("enchanting")}
+            aria-selected={section === "codes"}
+            onClick={() => setSection("codes")}
           >
-            ENCHANTING
+            CODES & REWARDS
           </button>
         </div>
         {section === "weapons" ? (
@@ -204,7 +209,11 @@ function ArmoryPage() {
                       {owned ? (equipped ? "EQUIPPED" : "OWNED") : <><span className="mso-coin" />{item.price}</>}
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">Character armor appearance. Your selected outfit is saved to your profile.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {ARMOUR_REDUCTION[item.id]
+                      ? `Damage reduction: ${ARMOUR_REDUCTION[item.id]}%`
+                      : "Cosmetic outfit. No damage reduction."}
+                  </p>
                   <button
                     type="button"
                     className={`mso-btn mt-auto ${owned ? "mso-btn-ghost" : ""}`}
@@ -217,87 +226,90 @@ function ArmoryPage() {
               );
             })}
           </div>
-        ) : section === "crafting" ? (
-          <section className="grid gap-5 sm:grid-cols-2">
-            {CRAFTING_RECIPES.map((recipe) => {
-              const owned = p.loot.crafted.includes(recipe.id);
-              const materials = Object.entries(recipe.materials)
-                .map(
-                  ([material, amount]) =>
-                    `${p.loot.materials[material as keyof typeof p.loot.materials]}/${amount} ${material}`,
-                )
-                .join(" · ");
-              return (
-                <article key={recipe.id} className="mso-card flex flex-col gap-3 p-5">
-                  <div className="mso-display text-2xl">{recipe.name}</div>
-                  <p className="text-sm text-muted-foreground">{materials}</p>
-                  <div className="mso-chip w-fit">
-                    <span className="mso-coin" />
-                    {recipe.fee} CRAFTING FEE
-                  </div>
-                  <button
-                    type="button"
-                    className="mso-btn mt-auto"
-                    disabled={
-                      p.kind === "loading" ||
-                      owned ||
-                      busyLoot !== null ||
-                      !canCraft(p.loot, recipe.id, p.credits)
-                    }
-                    onClick={() => void craft(recipe.id)}
-                  >
-                    {owned ? "CRAFTED" : `CRAFT · ${recipe.fee} COINS`}
-                  </button>
-                </article>
-              );
-            })}
-          </section>
-        ) : (
-          <section className="space-y-5">
-            <div className="mso-panel flex flex-wrap gap-4 text-sm">
-              <span>
-                BOOKS: <b>{p.loot.books}</b>
-              </span>
-              <span>
-                ENCHANTING SHARDS: <b>{p.loot.shards}</b>
-              </span>
-              <span className="text-muted-foreground">
-                Find books in dungeon furnishings; defeat the rare Enchanter for a shard.
-              </span>
-            </div>
-            {p.loot.crafted.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Craft a sword or armor piece first to enchant it.
-              </p>
-            ) : (
-              <div className="grid gap-5 sm:grid-cols-2">
-                {p.loot.crafted.flatMap((itemId) =>
-                  ENCHANTMENTS.map((enchantment) => {
-                    const done = p.loot.enchanted.includes(`${itemId}:${enchantment.id}`);
-                    const ready = canEnchant(p.loot, itemId, enchantment.id);
-                    return (
-                      <article
-                        key={`${itemId}:${enchantment.id}`}
-                        className="mso-card flex flex-col gap-3 p-5"
-                      >
-                        <div className="mso-display text-xl">
-                          {itemId.replaceAll("-", " ")} · {enchantment.name}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{enchantment.description}</p>
-                        <button
-                          type="button"
-                          className="mso-btn mt-auto"
-                          disabled={done || !ready || busyLoot !== null}
-                          onClick={() => enchant(itemId, enchantment.id)}
-                        >
-                          {done ? "ENCHANTED" : "USE BOOK + SHARD"}
-                        </button>
-                      </article>
-                    );
-                  }),
-                )}
+        ) : section === "workshop" ? (
+          <section className="workshop-layout">
+            {portalItem && (
+              <div className="enchant-portal" role="status" aria-label="Item enchanted">
+                <div className="enchant-portal-ring" />
+                <span>ENCHANTED</span>
               </div>
             )}
+            <div className="loot-chest workshop-chest">
+              <div className="loot-chest-lid"><span>CRAFTING CHEST</span></div>
+              <div className="loot-chest-body">
+                {p.loot.hotbar.slots.filter((stack) => stack && !["book", "shard"].includes(stack.item)).map((stack) => (
+                  <span className="loot-chip" key={stack!.item}>{stack!.count}× {stack!.item.replaceAll("-", " ")}</span>
+                ))}
+                {p.loot.materials.scrap + p.loot.materials.bone + p.loot.materials.essence === 0 && <b>CHEST EMPTY</b>}
+              </div>
+            </div>
+            <div className="loot-chest enchant-chest">
+              <div className="loot-chest-lid"><span>ENCHANTING CHEST</span></div>
+              <div className="loot-chest-body">
+                <span className="loot-chip">📘 {p.loot.books} BOOKS</span>
+                <span className="loot-chip">◆ {p.loot.shards} SHARDS</span>
+              </div>
+            </div>
+            <div className="workshop-grid">
+              {CRAFTING_RECIPES.map((recipe) => {
+                const owned = p.loot.crafted.includes(recipe.id);
+                const materials = Object.entries(recipe.materials).map(([material, amount]) =>
+                  `${p.loot.materials[material as keyof typeof p.loot.materials]}/${amount} ${material}`,
+                ).join(" · ");
+                return (
+                  <article key={recipe.id} className="mso-card flex flex-col gap-3 p-5">
+                    <div className="mso-display text-2xl">{recipe.name}</div>
+                    <p className="text-sm text-muted-foreground">{materials}</p>
+                    <button type="button" className="mso-btn mt-auto" disabled={p.kind === "loading" || owned || busyLoot !== null || !canCraft(p.loot, recipe.id, p.credits)} onClick={() => void craft(recipe.id)}>
+                      {owned ? "CRAFTED" : `CRAFT · ${recipe.fee} COINS`}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="enchant-grid">
+              {p.loot.crafted.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Craft a sword or armor piece first to enchant it.</p>
+              ) : p.loot.crafted.flatMap((itemId) =>
+                ENCHANTMENTS.map((enchantment) => {
+                  const key = `${itemId}:${enchantment.id}`;
+                  const done = p.loot.enchanted.includes(key);
+                  const ready = canEnchant(p.loot, itemId, enchantment.id);
+                  return (
+                    <article key={key} className="mso-card enchant-option p-5">
+                      <div className="enchant-rune">✦</div>
+                      <div className="mso-display text-xl">{itemId.replaceAll("-", " ")} · {enchantment.name}</div>
+                      <p className="text-sm text-muted-foreground">{enchantment.description}</p>
+                      <button type="button" className="mso-btn mt-auto" disabled={done || !ready || busyLoot !== null} onClick={() => enchant(itemId, enchantment.id)}>
+                        {done ? "ENCHANTED" : "ENCHANT"}
+                      </button>
+                    </article>
+                  );
+                }),
+              )}
+            </div>
+          </section>
+        ) : (
+          <section className="codes-panel mso-panel">
+            <div className="hub-info-kicker">SECRET REDEEMABLES</div>
+            <h2 className="mso-display mt-1 text-3xl">CODES & REWARDS</h2>
+            <form className="codes-form" onSubmit={(event) => {
+              event.preventDefault();
+              try {
+                const result = redeemCode(code);
+                toast.success(`${result.reward} · code redeemed`);
+                setCode("");
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Could not redeem code");
+              }
+            }}>
+              <input aria-label="Enter reward code" value={code} onChange={(event) => setCode(event.target.value)} placeholder="ENTER CODE" maxLength={32} />
+              <button className="mso-btn" type="submit" disabled={!code.trim()}>REDEEM</button>
+            </form>
+            <div className="codes-status">
+              <span>REDEEMED: <b>{p.redeemedCodes.length}/2</b></span>
+              {p.racingUnlocked && <a className="mso-btn" href="/racing">ENTER GUN RACING</a>}
+            </div>
           </section>
         )}
       </PageShell>

@@ -9,6 +9,8 @@ const NAV = [
   { to: "/profile", label: "Profile" },
   { to: "/train", label: "Training" },
   { to: "/co-op", label: "Co-op & 1v1" },
+  { to: "/vehicles", label: "Vehicles" },
+  { to: "/cooking", label: "Cooking" },
   { to: "/armory", label: "Armory" },
   { to: "/maps", label: "Maps" },
 ] as const;
@@ -21,14 +23,14 @@ export function TopBar() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3">
         <Link to="/" className="site-brand">
           <span className="site-brand-mark" aria-hidden="true">
-            M
+            MS
           </span>
           <span>
             MEXICAN <b>STANDOF</b>
           </span>
         </Link>
         <nav className="site-nav flex flex-wrap gap-1" aria-label="Main navigation">
-          {NAV.map((n) => (
+          {[...NAV, ...(p.racingUnlocked ? [{ to: "/racing" as const, label: "Gun Racing" }] : [])].map((n) => (
             <Link
               key={n.to}
               to={n.to}

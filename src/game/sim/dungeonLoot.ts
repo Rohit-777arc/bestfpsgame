@@ -22,12 +22,13 @@ export const EMPTY_LOOT_INVENTORY: LootInventory = {
 
 export const CRAFTING_RECIPES = [
   { id: "scrap-sword", name: "Scrap Sword", fee: 10, materials: { scrap: 3, bone: 1 }, kind: "sword" },
+  { id: "ember-sword", name: "Ember Sword", fee: 15, materials: { scrap: 2, essence: 2 }, kind: "sword" },
   { id: "bone-armor", name: "Bone Armor", fee: 20, materials: { bone: 4, scrap: 2 }, kind: "armor" },
 ] as const;
 
 export const ENCHANTMENTS = [
-  { id: "ember", name: "Ember", description: "A warm glow runs along the edge." },
-  { id: "ward", name: "Ward", description: "A faint warding aura surrounds the armor." },
+  { id: "ember", name: "Ember", description: "Adds a burning edge that deals damage over time." },
+  { id: "ward", name: "Ward", description: "Grants a protective aura that reduces incoming damage." },
 ] as const;
 
 export type LootDrop = {

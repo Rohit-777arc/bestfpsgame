@@ -65,7 +65,7 @@ export interface TierDef {
 
 export const TIERS: Record<Tier, TierDef> = {
   grunt: { id: "grunt", label: "Grunt", hp: 100, speed: 2.6, damage: 8, reach: 1.6, reward: 1 },
-  runner: { id: "runner", label: "Runner", hp: 60, speed: 4.2, damage: 5, reach: 1.4, reward: 2 },
+  runner: { id: "runner", label: "Runner", hp: 60, speed: 3.6, damage: 5, reach: 1.4, reward: 2 },
   brute: { id: "brute", label: "Brute", hp: 240, speed: 1.7, damage: 20, reach: 2.0, reward: 4 },
   enchanter: {
     id: "enchanter",
@@ -121,7 +121,7 @@ export function scaledTier(diff: Difficulty, tier: Tier): TierDef {
   };
 }
 
-export const UNDERGROUND_ROOM_HALF_SIZE = 18;
+export const UNDERGROUND_ROOM_HALF_SIZE = 24;
 
 /** Zombie rooms grow in population and strength while staying inside the room. */
 export function undergroundZombieCount(diff: Difficulty, room: number): number {

@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ArmoryRouteImport } from './routes/armory'
 import { Route as CoOpRouteImport } from './routes/co-op'
+import { Route as CookingRouteImport } from './routes/cooking'
 import { Route as MapsRouteImport } from './routes/maps'
 import { Route as PlayRouteImport } from './routes/play'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as RacingRouteImport } from './routes/racing'
 import { Route as TrainRouteImport } from './routes/train'
+import { Route as VehiclesRouteImport } from './routes/vehicles'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,6 +33,11 @@ const ArmoryRoute = ArmoryRouteImport.update({
 const CoOpRoute = CoOpRouteImport.update({
   id: '/co-op',
   path: '/co-op',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CookingRoute = CookingRouteImport.update({
+  id: '/cooking',
+  path: '/cooking',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapsRoute = MapsRouteImport.update({
@@ -47,9 +55,19 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RacingRoute = RacingRouteImport.update({
+  id: '/racing',
+  path: '/racing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrainRoute = TrainRouteImport.update({
   id: '/train',
   path: '/train',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VehiclesRoute = VehiclesRouteImport.update({
+  id: '/vehicles',
+  path: '/vehicles',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -57,55 +75,89 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/armory': typeof ArmoryRoute
   '/co-op': typeof CoOpRoute
+  '/cooking': typeof CookingRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
   '/profile': typeof ProfileRoute
+  '/racing': typeof RacingRoute
   '/train': typeof TrainRoute
+  '/vehicles': typeof VehiclesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/armory': typeof ArmoryRoute
   '/co-op': typeof CoOpRoute
+  '/cooking': typeof CookingRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
   '/profile': typeof ProfileRoute
+  '/racing': typeof RacingRoute
   '/train': typeof TrainRoute
+  '/vehicles': typeof VehiclesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/armory': typeof ArmoryRoute
   '/co-op': typeof CoOpRoute
+  '/cooking': typeof CookingRoute
   '/maps': typeof MapsRoute
   '/play': typeof PlayRoute
   '/profile': typeof ProfileRoute
+  '/racing': typeof RacingRoute
   '/train': typeof TrainRoute
+  '/vehicles': typeof VehiclesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/profile' | '/train'
+    | '/'
+    | '/armory'
+    | '/co-op'
+    | '/cooking'
+    | '/maps'
+    | '/play'
+    | '/profile'
+    | '/racing'
+    | '/train'
+    | '/vehicles'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/armory' | '/co-op' | '/maps' | '/play' | '/profile' | '/train'
+  to:
+    | '/'
+    | '/armory'
+    | '/co-op'
+    | '/cooking'
+    | '/maps'
+    | '/play'
+    | '/profile'
+    | '/racing'
+    | '/train'
+    | '/vehicles'
   id:
     | '__root__'
     | '/'
     | '/armory'
     | '/co-op'
+    | '/cooking'
     | '/maps'
     | '/play'
     | '/profile'
+    | '/racing'
     | '/train'
+    | '/vehicles'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ArmoryRoute: typeof ArmoryRoute
   CoOpRoute: typeof CoOpRoute
+  CookingRoute: typeof CookingRoute
   MapsRoute: typeof MapsRoute
   PlayRoute: typeof PlayRoute
   ProfileRoute: typeof ProfileRoute
+  RacingRoute: typeof RacingRoute
   TrainRoute: typeof TrainRoute
+  VehiclesRoute: typeof VehiclesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -131,6 +183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoOpRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cooking': {
+      id: '/cooking'
+      path: '/cooking'
+      fullPath: '/cooking'
+      preLoaderRoute: typeof CookingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/maps': {
       id: '/maps'
       path: '/maps'
@@ -152,11 +211,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/racing': {
+      id: '/racing'
+      path: '/racing'
+      fullPath: '/racing'
+      preLoaderRoute: typeof RacingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/train': {
       id: '/train'
       path: '/train'
       fullPath: '/train'
       preLoaderRoute: typeof TrainRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vehicles': {
+      id: '/vehicles'
+      path: '/vehicles'
+      fullPath: '/vehicles'
+      preLoaderRoute: typeof VehiclesRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -166,10 +239,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ArmoryRoute: ArmoryRoute,
   CoOpRoute: CoOpRoute,
+  CookingRoute: CookingRoute,
   MapsRoute: MapsRoute,
   PlayRoute: PlayRoute,
   ProfileRoute: ProfileRoute,
+  RacingRoute: RacingRoute,
   TrainRoute: TrainRoute,
+  VehiclesRoute: VehiclesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

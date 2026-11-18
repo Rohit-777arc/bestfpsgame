@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isWeaponId, STARTER_WEAPON, WEAPONS } from "./sim/weapons";
 import { waveCredits } from "./sim/waves";
 import { COSMETICS, isCosmeticId } from "./sim/cosmetics";
+import { CRAFTING_RECIPES } from "./sim/dungeonLoot";
 import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, totalExperience, waveExperience } from "./sim/progression";
 
 export const getProfile = createServerFn({ method: "GET" })
@@ -11,7 +12,13 @@ export const getProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const [{ data: profile }, { data: weapons }, { data: cosmetics }] = await Promise.all([
-      supabase.from("profiles").select("id, display_name, credits, equipped_weapon, level, experience, dungeons_completed, play_seconds, enemies_killed, deaths, equipped_shirt, equipped_hat").eq("id", userId).single(),
+      supabase
+        .from("profiles")
+        .select(
+          "id, display_name, credits, equipped_weapon, level, experience, dungeons_completed, play_seconds, enemies_killed, deaths, equipped_shirt, equipped_hat, equipped_pants, equipped_boots",
+        )
+        .eq("id", userId)
+        .single(),
       supabase.from("profile_weapons").select("weapon_id").eq("user_id", userId),
       supabase.from("profile_cosmetics").select("cosmetic_id").eq("user_id", userId),
     ]);
@@ -29,6 +36,8 @@ export const getProfile = createServerFn({ method: "GET" })
       cosmetics: (cosmetics ?? []).map((item) => String(item.cosmetic_id)),
       equippedShirt: profile?.equipped_shirt ?? null,
       equippedHat: profile?.equipped_hat ?? null,
+      equippedPants: profile?.equipped_pants ?? null,
+      equippedBoots: profile?.equipped_boots ?? null,
     };
   });
 
@@ -251,7 +260,7 @@ export const purchaseCosmetic = createServerFn({ method: "POST" })
   });
 
 const equipCosmeticInput = z.object({
-  slot: z.enum(["shirt", "hat"]),
+  slot: z.enum(["shirt", "hat", "pants", "boots"]),
   cosmeticId: z.string().nullable(),
 });
 
@@ -267,16 +276,33 @@ export const equipCosmeticItem = createServerFn({ method: "POST" })
       const { data: owned } = await supabase.from("profile_cosmetics").select("cosmetic_id").eq("user_id", userId).eq("cosmetic_id", data.cosmeticId).maybeSingle();
       if (!owned) throw new Error("You don't own that cosmetic");
     }
+    const columnUpdate = {
+      shirt: { equipped_shirt: data.cosmeticId },
+      hat: { equipped_hat: data.cosmeticId },
+      pants: { equipped_pants: data.cosmeticId },
+      boots: { equipped_boots: data.cosmeticId },
+    }[data.slot];
     const { error } = await supabase
       .from("profiles")
-      .update(
-        data.slot === "shirt"
-          ? { equipped_shirt: data.cosmeticId }
-          : { equipped_hat: data.cosmeticId },
-      )
+      .update(columnUpdate)
       .eq("id", userId);
     if (error) throw new Error("Could not equip cosmetic");
     return { slot: data.slot, cosmeticId: data.cosmeticId };
+  });
+
+const craftPurchaseInput = z.object({ recipeId: z.string() });
+
+export const spendCreditsForCraft = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => craftPurchaseInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const recipe = CRAFTING_RECIPES.find((item) => item.id === data.recipeId);
+    if (!recipe) throw new Error("Unknown crafting recipe");
+    const { data: credits, error } = await context.supabase.rpc("spend_player_credits", {
+      credit_amount: recipe.fee,
+    });
+    if (error || credits === null) throw new Error("Could not spend credits");
+    return { credits };
   });
 
 const renameInput = z.object({ name: z.string().min(1).max(24) });

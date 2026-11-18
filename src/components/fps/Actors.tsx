@@ -54,6 +54,10 @@ export const TIER_LOOK: Record<Tier, { cloth: THREE.MeshStandardMaterial; scale:
   grunt: { cloth: new THREE.MeshStandardMaterial({ color: "#6b6f4a", roughness: 0.95 }), scale: 1 },
   runner: { cloth: new THREE.MeshStandardMaterial({ color: "#2f6f8f", roughness: 0.9 }), scale: 0.9 },
   brute: { cloth: new THREE.MeshStandardMaterial({ color: "#8f2f2f", roughness: 0.9 }), scale: 1.35 },
+  enchanter: {
+    cloth: new THREE.MeshStandardMaterial({ color: "#4b326f", roughness: 0.82 }),
+    scale: 1.05,
+  },
 };
 
 type Tag = Record<string, unknown>;
@@ -173,6 +177,7 @@ function swing(limbs: ReturnType<typeof useLimbs>, w: number) {
 export function EnemyMesh({ e, zombie = false }: { e: EnemyRuntime; zombie?: boolean }) {
   const root = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
+  const staff = useRef<THREE.Group>(null);
   const limbs = useLimbs();
   const look = TIER_LOOK[e.tier];
 
@@ -201,6 +206,10 @@ export function EnemyMesh({ e, zombie = false }: { e: EnemyRuntime; zombie?: boo
     } else if (limbs.rArm.current && e.cd > 0 && e.cd > 0.8) {
       limbs.rArm.current.rotation.x = -1.6;
     }
+    if (staff.current) {
+      staff.current.position.y = 1.18 + Math.sin(s.clock.elapsedTime * 2.4 + e.phase) * 0.22;
+      staff.current.rotation.z = Math.sin(s.clock.elapsedTime * 1.8 + e.phase) * 0.16;
+    }
   });
 
   return (
@@ -213,6 +222,19 @@ export function EnemyMesh({ e, zombie = false }: { e: EnemyRuntime; zombie?: boo
             <Body tag={{ enemyId: e.id }} cloth={look.cloth} refs={limbs} />
             {e.tier !== "grunt" && <mesh geometry={G.visor} material={visorMat} position={[0, 1.98, 0.18]} userData={{ enemyId: e.id }} />}
           </>
+        )}
+        {e.tier === "enchanter" && (
+          <group ref={staff} position={[0.48, 1.18, 0.08]} rotation-z={-0.7}>
+            <mesh position={[0, 0.45, 0]} rotation-z={-0.15}>
+              <cylinderGeometry args={[0.035, 0.05, 0.8, 8]} />
+              <meshStandardMaterial color="#76553b" />
+            </mesh>
+            <mesh position={[0, 0.9, 0]}>
+              <octahedronGeometry args={[0.17]} />
+              <meshStandardMaterial color="#c28aff" emissive="#883cff" emissiveIntensity={2.2} />
+            </mesh>
+            <pointLight position={[0, 0.9, 0]} color="#a44dff" intensity={1.4} distance={3} />
+          </group>
         )}
       </group>
     </group>

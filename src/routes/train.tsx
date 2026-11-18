@@ -6,7 +6,7 @@ import { MAP_SWATCH, PageShell, Picker } from "@/components/game/Picker";
 import { useProgress } from "@/components/game/useProgress";
 import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
-import { recordSessionStats } from "@/game/progress";
+import { dropHotbarItem, recordSessionStats, selectHotbarSlot } from "@/game/progress";
 
 export const Route = createFileRoute("/train")({
   ssr: false,
@@ -41,10 +41,15 @@ function TrainPage() {
         weapon={p.equipped}
         playerName={p.name}
         credits={p.credits}
+        hotbar={p.loot.hotbar}
+        onSelectHotbarSlot={selectHotbarSlot}
+        onDropHotbarItem={dropHotbarItem}
         level={p.level}
         experience={p.experience}
         equippedShirt={p.equippedShirt}
         equippedHat={p.equippedHat}
+        equippedPants={p.equippedPants}
+        equippedBoots={p.equippedBoots}
         onExit={async (stats) => {
           try {
             await recordSessionStats(stats);

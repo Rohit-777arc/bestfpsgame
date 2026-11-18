@@ -120,16 +120,16 @@ const oldBrass = new THREE.MeshStandardMaterial({ color: "#665336", metalness: 0
 
 /** A cramped, repeating stone chamber with a stairwell marking the next room. */
 export function UndergroundScene({ room }: { room: number }) {
-  const half = 14;
-  const tileLines = Array.from({ length: 13 }, (_, index) => index - 6);
+  const half = 18;
+  const tileLines = Array.from({ length: 17 }, (_, index) => index - 8);
   const roomTint = room % 3 === 0 ? "#514b3c" : room % 2 === 0 ? "#625d49" : "#6b6752";
 
   return (
     <>
       <color attach="background" args={["#11120f"]} />
       <fog attach="fog" args={["#171811", 9, 30]} />
-      <hemisphereLight args={["#777768", "#181811", 0.62]} />
-      <ambientLight color="#9b9878" intensity={0.28} />
+      <hemisphereLight args={["#a6a18a", "#29271c", 0.92]} />
+      <ambientLight color="#b4ad86" intensity={0.48} />
 
       <mesh position={[0, -0.32, 0]} receiveShadow userData={{ solid: true }}>
         <boxGeometry args={[half * 2, 0.6, half * 2]} />
@@ -186,7 +186,7 @@ export function UndergroundScene({ room }: { room: number }) {
         </group>
       ))}
 
-      {[-6, 0, 6].map((x, index) => (
+      {[-8, 0, 8].map((x, index) => (
         <group key={`light-${x}`}>
           <mesh position={[x, 5.08, 2]} rotation-x={Math.PI / 2}>
             <boxGeometry args={[2.8, 0.08, 0.45]} />
@@ -197,11 +197,16 @@ export function UndergroundScene({ room }: { room: number }) {
               roughness={0.6}
             />
           </mesh>
-          <pointLight position={[x, 4.8, 2]} color={index === room % 3 ? "#88734c" : "#d1cda9"} intensity={index === room % 3 ? 1.4 : 2.1} distance={13} />
+          <pointLight
+            position={[x, 4.8, 2]}
+            color={index === room % 3 ? "#aa8f5c" : "#e5dfb8"}
+            intensity={index === room % 3 ? 2.6 : 3.2}
+            distance={17}
+          />
         </group>
       ))}
 
-      <group position={[0, 0, -13.6]}>
+      <group position={[0, 0, -17.6]}>
         {[0, 1, 2, 3].map((step) => (
           <mesh key={step} position={[0, 0.15 + step * 0.25, -step * 0.75]} receiveShadow>
             <boxGeometry args={[3.6 - step * 0.25, 0.3, 0.9]} />
@@ -212,18 +217,31 @@ export function UndergroundScene({ room }: { room: number }) {
           <boxGeometry args={[2.1, 0.08, 0.08]} />
           <meshStandardMaterial color="#a28d58" emissive="#574321" emissiveIntensity={0.5} />
         </mesh>
-        <pointLight position={[0, 1.4, -3.8]} color="#bd9b54" intensity={1.3} distance={6} />
+        <pointLight position={[0, 1.4, -17]} color="#d5aa62" intensity={2.2} distance={8} />
       </group>
 
-      <mesh position={[0, 1.15, 13.66]} castShadow>
+      <mesh position={[0, 1.15, 17.66]} castShadow>
         <boxGeometry args={[3.4, 2.3, 0.05]} />
         <primitive object={oldBrass} attach="material" />
       </mesh>
-      <mesh position={[0, 1.15, 13.6]}>
+      <mesh position={[0, 1.15, 17.6]}>
         <planeGeometry args={[1.8, 1.2]} />
         <meshBasicMaterial color="#171811" />
       </mesh>
-      <pointLight position={[0, 2.8, 10.5]} color="#9c804e" intensity={0.8} distance={8} />
+      <pointLight position={[0, 2.8, 14]} color="#c6a05d" intensity={1.7} distance={11} />
+
+      {[-1, 1].map((side) => (
+        <group key={`furnishing-${side}`} position={[side * 13.2, 0, -3]}>
+          <mesh position={[0, 0.62, 0]} castShadow receiveShadow>
+            <boxGeometry args={[2.1, 1.2, 1.2]} />
+            <meshStandardMaterial color="#493a29" roughness={0.94} />
+          </mesh>
+          <mesh position={[0, 1.25, 0]} castShadow>
+            <boxGeometry args={[2.3, 0.12, 1.35]} />
+            <primitive object={oldBrass} attach="material" />
+          </mesh>
+        </group>
+      ))}
     </>
   );
 }

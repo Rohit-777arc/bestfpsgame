@@ -8,7 +8,15 @@ import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
 import { DIFFICULTIES, type Difficulty, type DungeonVariant } from "@/game/sim/waves";
 import { WEAPONS } from "@/game/sim/weapons";
-import { awardWave, collectExperience, recordSessionStats } from "@/game/progress";
+import {
+  awardDungeonLoot,
+  awardWave,
+  collectExperience,
+  dropHotbarItem,
+  findEnchantingBook,
+  recordSessionStats,
+  selectHotbarSlot,
+} from "@/game/progress";
 
 export const Route = createFileRoute("/play")({
   ssr: false,
@@ -43,16 +51,36 @@ function PlayPage() {
         weapon={p.equipped}
         playerName={p.name}
         credits={p.credits}
+        hotbar={p.loot.hotbar}
+        onSelectHotbarSlot={selectHotbarSlot}
+        onDropHotbarItem={dropHotbarItem}
         level={p.level}
         experience={p.experience}
         equippedShirt={p.equippedShirt}
         equippedHat={p.equippedHat}
+        equippedPants={p.equippedPants}
+        equippedBoots={p.equippedBoots}
         onWaveCleared={async (wave) => {
           const res = await awardWave(map, diff, wave, runId.current);
           runId.current = res.runId;
           return res;
         }}
         onExperienceCollected={collectExperience}
+        onDungeonKill={(tier) => {
+          const drop = awardDungeonLoot(tier);
+          const lootText = Object.entries(drop.materials)
+            .filter(([, amount]) => amount)
+            .map(([material, amount]) => `${amount} ${material}`)
+            .join(", ");
+          if (drop.shard) toast.success("ENCHANTING SHARD FOUND");
+          else if (drop.book) toast.success("ENCHANTING BOOK FOUND");
+          else if (lootText) toast.success(`Dungeon loot: ${lootText}`);
+          if (drop.inventoryFull) toast.error("Inventory full; some loot could not be collected");
+        }}
+        onBookFound={() => {
+          if (findEnchantingBook()) toast.success("Enchanting book found in the room");
+          else toast.error("Your hotbar and bundle are full");
+        }}
         onRestart={() => { runId.current = null; }}
         onExit={async (stats) => {
           try {

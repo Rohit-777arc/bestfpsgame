@@ -1,4 +1,4 @@
-export type CosmeticSlot = "shirt" | "hat";
+export type CosmeticSlot = "shirt" | "hat" | "pants" | "boots";
 
 export interface Cosmetic {
   id: string;
@@ -93,6 +93,10 @@ export const COSMETICS = [
     color: "#889276",
     style: "helmet",
   },
+  { id: "field-trousers", name: "Field Trousers", slot: "pants", price: 45, color: "#454b43", style: "shirt" },
+  { id: "dungeon-greaves", name: "Dungeon Greaves", slot: "pants", price: 110, color: "#667887", style: "armor" },
+  { id: "combat-boots", name: "Combat Boots", slot: "boots", price: 35, color: "#332a22", style: "shirt" },
+  { id: "iron-greaves", name: "Iron Boots", slot: "boots", price: 85, color: "#68747b", style: "armor" },
 ] as const satisfies readonly Cosmetic[];
 
 export type CosmeticId = (typeof COSMETICS)[number]["id"];

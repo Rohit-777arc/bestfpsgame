@@ -1,6 +1,8 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useId } from "react";
+import { useFrame } from "@react-three/fiber";
+import { Maximize2, Minimize2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import * as THREE from "three";
 import { getCosmetic } from "@/game/sim/cosmetics";
 import { WEAPONS, type WeaponId } from "@/game/sim/weapons";
@@ -8,27 +10,44 @@ import { WEAPONS, type WeaponId } from "@/game/sim/weapons";
 export function CharacterPreview({
   shirtId,
   hatId,
+  pantsId = null,
+  bootsId = null,
   compact = false,
   rotatable = false,
   weaponId = "scout-pistol",
 }: {
   shirtId: string | null;
   hatId: string | null;
+  pantsId?: string | null;
+  bootsId?: string | null;
   compact?: boolean;
   rotatable?: boolean;
   weaponId?: WeaponId;
 }) {
   const previewId = useId();
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState(false);
+  useEffect(() => {
+    const updateFullscreen = () => setFullscreen(document.fullscreenElement === previewRef.current);
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    return () => document.removeEventListener("fullscreenchange", updateFullscreen);
+  }, []);
   const shirt = getCosmetic(shirtId);
   const hat = getCosmetic(hatId);
+  const pants = getCosmetic(pantsId);
+  const boots = getCosmetic(bootsId);
   const shirtColor = shirt?.color ?? "#53677a";
   const hatColor = hat?.color ?? "#394554";
+  const pantsColor = pants?.color ?? "#34383b";
+  const bootsColor = boots?.color ?? "#22272a";
 
   if (rotatable) {
     return (
       <div
-        className="character-preview character-preview-3d"
-        role="img"
+        ref={previewRef}
+        className={`character-preview character-preview-3d${fullscreen ? " character-preview-fullscreen" : ""}`}
+        role="group"
         aria-label={`Rotatable blocky character wearing ${shirt?.name ?? "standard uniform"} and holding ${WEAPONS[weaponId].name}`}
       >
         <Canvas camera={{ position: [3.3, 2.2, 4], fov: 34 }} dpr={[1, 1.5]}>
@@ -36,7 +55,15 @@ export function CharacterPreview({
           <ambientLight intensity={1.5} />
           <directionalLight position={[3, 6, 4]} intensity={3} castShadow />
           <pointLight position={[-3, 2, -3]} intensity={18} color="#80ff20" />
-          <BlockyOperator shirtColor={shirtColor} hatColor={hatColor} hatStyle={hat?.style} shirtStyle={shirt?.style} weaponId={weaponId} />
+          <BlockyOperator
+            shirtColor={shirtColor}
+            hatColor={hatColor}
+            pantsColor={pantsColor}
+            bootsColor={bootsColor}
+            hatStyle={hat?.style}
+            shirtStyle={shirt?.style}
+            weaponId={weaponId}
+          />
           <mesh rotation-x={-Math.PI / 2} position-y={-0.03} receiveShadow>
             <circleGeometry args={[1.25, 48]} />
             <meshStandardMaterial color="#263940" roughness={0.85} />
@@ -44,6 +71,29 @@ export function CharacterPreview({
           <OrbitControls enablePan={false} minDistance={3.5} maxDistance={6} minPolarAngle={0.7} maxPolarAngle={1.8} />
         </Canvas>
         <span className="character-preview-hint">DRAG TO ROTATE</span>
+        <button
+          type="button"
+          className="character-preview-fullscreen-button"
+          aria-label={
+            fullscreen ? "Exit fullscreen character preview" : "View character fullscreen"
+          }
+          onClick={() => {
+            const fullscreenChange =
+              document.fullscreenElement === previewRef.current
+                ? document.exitFullscreen()
+                : previewRef.current?.requestFullscreen();
+            setFullscreenError(false);
+            void fullscreenChange?.catch(() => setFullscreenError(true));
+          }}
+        >
+          {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          {fullscreen ? "EXIT FULLSCREEN" : "FULLSCREEN"}
+        </button>
+        {fullscreenError && (
+          <span className="character-preview-fullscreen-error" role="status">
+            Fullscreen is unavailable in this browser.
+          </span>
+        )}
       </div>
     );
   }
@@ -62,6 +112,8 @@ export function CharacterPreview({
         </linearGradient>
       </defs>
       <rect x="4" y="4" width="172" height="212" rx="18" fill={`url(#preview-bg-${previewId})`} />
+      <path d="M58 148h64l12 65h-28l-9-42-10 42H48z" fill={pantsColor} />
+      <path d="M49 204h34v11H45zm43 0h34v11H91z" fill={bootsColor} />
       <path d="M25 213c3-39 24-64 65-64s62 25 65 64" fill={shirtColor} />
       {shirt?.style === "coat" && (
         <path d="m75 152 15 23 15-23 13 61H62z" fill="#d5aa73" opacity=".8" />
@@ -127,21 +179,38 @@ export function CharacterPreview({
 function BlockyOperator({
   shirtColor,
   hatColor,
+  pantsColor,
+  bootsColor,
   hatStyle,
   shirtStyle,
   weaponId,
 }: {
   shirtColor: string;
   hatColor: string;
+  pantsColor: string;
+  bootsColor: string;
   hatStyle?: string | undefined;
   shirtStyle?: string | undefined;
   weaponId: WeaponId;
 }) {
+  const body = useRef<THREE.Group>(null);
+  const leftArm = useRef<THREE.Group>(null);
+  const rightArm = useRef<THREE.Group>(null);
+  const leftLeg = useRef<THREE.Group>(null);
+  const rightLeg = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    const time = clock.elapsedTime;
+    if (body.current) body.current.position.y = 0.03 + Math.sin(time * 1.7) * 0.025;
+    if (leftArm.current) leftArm.current.rotation.x = Math.sin(time * 1.7) * 0.07;
+    if (rightArm.current) rightArm.current.rotation.x = -Math.sin(time * 1.7) * 0.07;
+    if (leftLeg.current) leftLeg.current.rotation.x = -Math.sin(time * 1.7) * 0.045;
+    if (rightLeg.current) rightLeg.current.rotation.x = Math.sin(time * 1.7) * 0.045;
+  });
   const weapon = WEAPONS[weaponId];
   const skin = "#c8a77a";
   const dark = new THREE.Color(shirtColor).multiplyScalar(0.55).getStyle();
   return (
-    <group position-y={0.03}>
+    <group ref={body} position-y={0.03}>
       <mesh position={[0, 0.48, 0]} castShadow>
         <boxGeometry args={[0.38, 0.92, 0.42]} />
         <meshStandardMaterial color="#27333a" />
@@ -161,6 +230,46 @@ function BlockyOperator({
             <meshStandardMaterial color="#f0c255" emissive="#a66b08" emissiveIntensity={0.3} />
           </mesh>
         </>
+      )}
+      {shirtStyle === "vest" && (
+        <>
+          <mesh position={[-0.14, 1.26, 0.23]}>
+            <boxGeometry args={[0.17, 0.48, 0.07]} />
+            <meshStandardMaterial color={dark} />
+          </mesh>
+          <mesh position={[0.14, 1.26, 0.23]}>
+            <boxGeometry args={[0.17, 0.48, 0.07]} />
+            <meshStandardMaterial color={dark} />
+          </mesh>
+          <mesh position={[0, 1.3, 0.275]}>
+            <boxGeometry args={[0.055, 0.22, 0.025]} />
+            <meshStandardMaterial color="#d5b36c" metalness={0.45} />
+          </mesh>
+        </>
+      )}
+      {shirtStyle === "coat" && (
+        <>
+          <mesh position={[-0.12, 1.3, 0.24]} rotation-z={-0.18}>
+            <boxGeometry args={[0.15, 0.45, 0.06]} />
+            <meshStandardMaterial color="#ead2b1" roughness={0.82} />
+          </mesh>
+          <mesh position={[0.12, 1.3, 0.24]} rotation-z={0.18}>
+            <boxGeometry args={[0.15, 0.45, 0.06]} />
+            <meshStandardMaterial color="#ead2b1" roughness={0.82} />
+          </mesh>
+        </>
+      )}
+      {shirtStyle === "jacket" && (
+        <mesh position={[0, 1.26, 0.23]}>
+          <boxGeometry args={[0.06, 0.56, 0.035]} />
+          <meshStandardMaterial color="#b4fff3" emissive="#30cfc1" emissiveIntensity={0.7} />
+        </mesh>
+      )}
+      {shirtStyle === "hoodie" && (
+        <mesh position={[0, 1.56, -0.25]}>
+          <boxGeometry args={[0.42, 0.32, 0.16]} />
+          <meshStandardMaterial color="#612333" roughness={0.98} />
+        </mesh>
       )}
       {shirtStyle === "cloak" && (
         <mesh position={[0, 1.12, -0.24]}>
@@ -183,8 +292,20 @@ function BlockyOperator({
         <meshStandardMaterial color="#382c2a" />
       </mesh>
       <mesh position={[0, 1.9, 0.276]}>
-        <boxGeometry args={[0.34, 0.08, 0.025]} />
-        <meshStandardMaterial color="#dce8e7" emissive="#657f7d" emissiveIntensity={0.25} />
+        <boxGeometry args={[0.08, 0.09, 0.025]} />
+        <meshStandardMaterial color="#182326" />
+      </mesh>
+      <mesh position={[0.17, 1.9, 0.276]}>
+        <boxGeometry args={[0.08, 0.09, 0.025]} />
+        <meshStandardMaterial color="#182326" />
+      </mesh>
+      <mesh position={[-0.17, 1.9, 0.29]}>
+        <boxGeometry args={[0.09, 0.045, 0.025]} />
+        <meshStandardMaterial color="#f0d7b6" />
+      </mesh>
+      <mesh position={[0.17, 1.9, 0.29]}>
+        <boxGeometry args={[0.09, 0.045, 0.025]} />
+        <meshStandardMaterial color="#f0d7b6" />
       </mesh>
       {hatStyle === "helmet" && (
         <mesh position={[0, 2.2, 0]}>
@@ -200,18 +321,26 @@ function BlockyOperator({
       )}
       {([-1, 1] as const).map((side) => (
         <group key={side}>
-          <mesh position={[side * 0.45, 1.23, 0]} castShadow>
-            <boxGeometry args={[0.2, 0.7, 0.22]} />
-            <meshStandardMaterial color={shirtColor} />
-          </mesh>
-          <mesh position={[side * 0.45, 0.86, 0]} castShadow>
-            <boxGeometry args={[0.2, 0.14, 0.22]} />
-            <meshStandardMaterial color={skin} />
-          </mesh>
-          <mesh position={[side * 0.2, 0.42, 0]} castShadow>
-            <boxGeometry args={[0.32, 0.78, 0.34]} />
-            <meshStandardMaterial color="#34383b" />
-          </mesh>
+          <group ref={side < 0 ? leftArm : rightArm} position={[side * 0.45, 1.58, 0]}>
+            <mesh position={[0, -0.35, 0]} castShadow>
+              <boxGeometry args={[0.2, 0.7, 0.22]} />
+              <meshStandardMaterial color={shirtColor} />
+            </mesh>
+            <mesh position={[0, -0.72, 0]} castShadow>
+              <boxGeometry args={[0.2, 0.14, 0.22]} />
+              <meshStandardMaterial color={skin} />
+            </mesh>
+          </group>
+          <group ref={side < 0 ? leftLeg : rightLeg} position={[side * 0.2, 0.1, 0]}>
+            <mesh position={[0, 0.32, 0]} castShadow>
+              <boxGeometry args={[0.32, 0.72, 0.34]} />
+              <meshStandardMaterial color={pantsColor} roughness={0.95} />
+            </mesh>
+            <mesh position={[0, -0.1, 0.06]} castShadow>
+              <boxGeometry args={[0.34, 0.2, 0.5]} />
+              <meshStandardMaterial color={bootsColor} roughness={0.88} />
+            </mesh>
+          </group>
         </group>
       ))}
       <group position={[0.55, 1.03, 0.32]} rotation-x={-0.12}>

@@ -7,7 +7,13 @@ import { useProgress } from "@/components/game/useProgress";
 import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
 import { isRoomCode } from "@/game/room-code";
-import { awardWave, collectExperience, recordSessionStats } from "@/game/progress";
+import {
+  awardWave,
+  collectExperience,
+  dropHotbarItem,
+  recordSessionStats,
+  selectHotbarSlot,
+} from "@/game/progress";
 import {
   makeRoomCode,
   playerId,
@@ -98,10 +104,15 @@ function CoopPage() {
         weapon={p.equipped}
         playerName={p.name}
         credits={p.credits}
+        hotbar={p.loot.hotbar}
+        onSelectHotbarSlot={selectHotbarSlot}
+        onDropHotbarItem={dropHotbarItem}
         level={p.level}
         experience={p.experience}
         equippedShirt={p.equippedShirt}
         equippedHat={p.equippedHat}
+        equippedPants={p.equippedPants}
+        equippedBoots={p.equippedBoots}
         net={{ channelRef, bus, roster }}
         onExperienceCollected={collectExperience}
         {...(mode === "coop"

@@ -18,6 +18,7 @@ import { ExperienceBar } from "@/components/game/ExperienceBar";
 import { DUNGEON_WAVES, enemyExperience } from "@/game/sim/progression";
 import { playExperiencePickup, playLevelUp } from "@/game/audio";
 import { isCoordinator, playerId, sendEvent, sendState, type NetBus, type NetEvent, type RosterEntry } from "@/game/net";
+import { HOTBAR_ITEMS, type HotbarInventory } from "@/game/sim/hotbar";
 
 export type ArenaMode = "dungeon" | "train" | "coop" | "duel";
 type ControlMode = "pc" | "mobile";
@@ -47,9 +48,17 @@ export interface ArenaProps {
   experience?: number;
   equippedShirt?: string | null;
   equippedHat?: string | null;
+  equippedPants?: string | null;
+  equippedBoots?: string | null;
   net?: NetLink;
   onWaveCleared?: (wave: number) => Promise<{ awarded: number; experience: number; levelsGained?: number; level?: number }> | { awarded: number; experience: number; levelsGained?: number; level?: number } | undefined;
   onExperienceCollected?: (amount: number) => Promise<{ levelsGained: number; level: number }>;
+  onDungeonKill?: (tier: "grunt" | "runner" | "brute" | "enchanter") => void;
+  onBookFound?: () => void;
+  hotbar: HotbarInventory;
+  onSelectHotbarSlot: (slot: number) => void;
+  onDropHotbarItem: () => boolean;
+  onToggleAvatar?: () => void;
   onRestart?: () => void;
   onExit: (stats: ArenaSessionStats) => void | Promise<void>;
 }
@@ -160,6 +169,7 @@ function World(
   const dead = useRef(false);
   const respawnAt = useRef(0);
   const gun = useRef<THREE.Group>(null);
+  const magazine = useRef<THREE.Mesh>(null);
   const flash = useRef<THREE.PointLight>(null);
   const fx = useRef<THREE.Group>(null);
   const tracers = useRef<{ m: THREE.Mesh; dir: THREE.Vector3; left: number }[]>([]);
@@ -175,6 +185,7 @@ function World(
   const collectingExperience = useRef(false);
   const [experienceOrbKeys, setExperienceOrbKeys] = useState<number[]>([]);
   const experienceOrbMeshes = useRef(new Map<number, THREE.Mesh>());
+  const bookPickupRoom = useRef(0);
   const nextExperienceOrbId = useRef(0);
   const wave = useRef(0);
   const waveSeed = useRef(0);
@@ -333,6 +344,7 @@ function World(
     runExperience.current = 0;
     runRewardSaveFailed.current = false;
     experienceOrbs.current = [];
+    bookPickupRoom.current = 0;
     experienceOrbMeshes.current.clear();
     setExperienceOrbKeys([]);
     timeLeft.current = TRAIN_TIME;
@@ -532,6 +544,24 @@ function World(
       keys.current[e.code] = true;
       if (e.code === "Space") e.preventDefault();
       if (e.code === "KeyR") startReload();
+      if (e.code.startsWith("Digit")) {
+        const digit = Number(e.code.slice(5));
+        if (digit >= 1 && digit <= 9) props.onSelectHotbarSlot(digit - 1);
+      }
+      if (e.code === "KeyQ" && !props.paused) {
+        const dropped = props.onDropHotbarItem();
+        api.feed(
+          dropped
+            ? "ITEM DROPPED"
+            : props.hotbar.selected === 8
+              ? "THE BUNDLE CANNOT BE DROPPED"
+              : "NO ITEM IN THIS SLOT",
+        );
+      }
+      if (e.code === "F5") {
+        e.preventDefault();
+        props.onToggleAvatar?.();
+      }
     };
     const ku = (e: KeyboardEvent) => (keys.current[e.code] = false);
     const mm = (e: MouseEvent) => {
@@ -591,7 +621,15 @@ function World(
       document.removeEventListener("pointerlockchange", plc);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, weapon]);
+  }, [
+    gl,
+    weapon,
+    props.onDropHotbarItem,
+    props.onSelectHotbarSlot,
+    props.onToggleAvatar,
+    props.paused,
+    props.hotbar.selected,
+  ]);
 
   function startReload() {
     if (reload.current > 0 || ammo.current === weapon.mag || dead.current) return;
@@ -600,8 +638,14 @@ function World(
   }
   props.reloadRef.current = startReload;
 
-  function addSpark(at: THREE.Vector3, hot: boolean) {
-    const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: hot ? "#ff5a36" : "#fff1c4", transparent: true }));
+  function addSpark(at: THREE.Vector3, hot: boolean, arcane = false) {
+    const m = new THREE.Mesh(
+      sparkGeo,
+      new THREE.MeshBasicMaterial({
+        color: arcane ? "#c58aff" : hot ? "#ff5a36" : "#fff1c4",
+        transparent: true,
+      }),
+    );
     m.position.copy(at);
     fx.current?.add(m);
     sparks.current.push({ m, life: 0.3 });
@@ -615,6 +659,7 @@ function World(
       kills.current++;
       props.statsRef.current.kills++;
       api.feed(`${props.playerName} ▸ ${mode === "train" ? "DUMMY" : en.tier.toUpperCase()}`);
+      if (mode === "dungeon" && underground) props.onDungeonKill?.(en.tier);
       if (mode === "coop") {
         sendEvent(net?.channelRef.current ?? null, {
           type: "kill",
@@ -903,6 +948,19 @@ function World(
       }
     }
 
+    if (
+      underground &&
+      live &&
+      !dead.current &&
+      wave.current > 0 &&
+      bookPickupRoom.current !== wave.current &&
+      Math.hypot(camera.position.x + 13.2, camera.position.z + 3) < 1.7
+    ) {
+      bookPickupRoom.current = wave.current;
+      props.onBookFound?.();
+      api.feed("ENCHANTING BOOK FOUND");
+    }
+
     // enemies AI
     const me = camera.position;
     const targets: { x: number; z: number; local: boolean }[] = [];
@@ -986,6 +1044,67 @@ function World(
           }
         }
       }
+      if (
+        underground &&
+        e.tier === "enchanter" &&
+        chasing?.local &&
+        dist > 3 &&
+        dist < 15 &&
+        e.attackCd <= 0
+      ) {
+        e.attackCd = 3.2;
+        e.ry = Math.atan2(dx, dz);
+        const origin = new THREE.Vector3(
+          e.x + Math.sin(e.ry) * 0.45,
+          1.65,
+          e.z + Math.cos(e.ry) * 0.45,
+        );
+        const target = new THREE.Vector3(me.x, me.y - 0.15, me.z);
+        const direction = target.clone().sub(origin).normalize();
+        const magicBolt = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 10, 10),
+          new THREE.MeshBasicMaterial({ color: "#b56aff", transparent: true }),
+        );
+        magicBolt.position.copy(origin);
+        fx.current?.add(magicBolt);
+        tracers.current.push({ m: magicBolt, dir: direction, left: origin.distanceTo(target) });
+        hp.current = Math.max(0, hp.current - e.damage);
+        addSpark(target, false, true);
+        for (let particle = 0; particle < 4; particle++) {
+          addSpark(
+            target
+              .clone()
+              .add(
+                new THREE.Vector3(
+                  (Math.random() - 0.5) * 0.9,
+                  (Math.random() - 0.5) * 0.9,
+                  (Math.random() - 0.5) * 0.9,
+                ),
+              ),
+            false,
+            true,
+          );
+        }
+        api.patch({ hp: hp.current, hurt: Date.now() });
+        api.feed("ENCHANTER ▸ ARCANE WAVE");
+        if (hp.current <= 0) {
+          dead.current = true;
+          props.statsRef.current.deaths++;
+          over.current = true;
+          document.exitPointerLock?.();
+          api.patch((h) => ({
+            over: {
+              title: "YOU DIED",
+              lines: [
+                `Reached room ${wave.current}`,
+                `${kills.current} enemies down`,
+                `+${h.earned} credits this run`,
+              ],
+            },
+          }));
+        }
+      }
+
       if (chasing && dist < e.reach) {
         e.moving = false;
         e.ry = Math.atan2(dx, dz);
@@ -1064,20 +1183,31 @@ function World(
           void waveDone(wave.current);
           nextWaveAt.current = -1;
         } else {
-          const coordinator = mode === "dungeon" || isCoordinator(rosterRef.current);
-          if (coordinator) {
-            const seed = Math.floor(Math.random() * 1e9);
-            const n = wave.current + 1;
-            if (mode === "coop")
-              sendEvent(net?.channelRef.current ?? null, {
-                type: "wave",
-                from: playerId(),
-                wave: n,
-                seed,
-              });
-            startWave(n, seed);
+          const needsRoomTransition =
+            underground && (Math.abs(camera.position.x) > 3 || camera.position.z > -15.5);
+          if (needsRoomTransition) {
+            nextWaveAt.current = clock.current + 0.5;
+            api.patch({ banner: "NEXT ROOM", sub: "FOLLOW THE ARROW TO THE STAIRWAY" });
           } else {
-            nextWaveAt.current = clock.current + 2; // wait for the coordinator's wave event
+            if (underground) {
+              camera.position.set(0, EYE, 0);
+              vy.current = 0;
+            }
+            const coordinator = mode === "dungeon" || isCoordinator(rosterRef.current);
+            if (coordinator) {
+              const seed = Math.floor(Math.random() * 1e9);
+              const n = wave.current + 1;
+              if (mode === "coop")
+                sendEvent(net?.channelRef.current ?? null, {
+                  type: "wave",
+                  from: playerId(),
+                  wave: n,
+                  seed,
+                });
+              startWave(n, seed);
+            } else {
+              nextWaveAt.current = clock.current + 2; // wait for the coordinator's wave event
+            }
           }
         }
       }
@@ -1087,13 +1217,17 @@ function World(
     recoil.current *= Math.exp(-12 * dt);
     const bob = move.lengthSq() && grounded ? Math.sin(state.clock.elapsedTime * 12) * 0.015 : 0;
     if (gun.current) {
+      const reloadProgress = reload.current > 0 ? 1 - reload.current / weapon.reloadTime : 0;
+      const reloadPose = Math.sin(reloadProgress * Math.PI);
       gun.current.visible = !aiming.current && !dead.current;
       gun.current.position.copy(camera.position);
       gun.current.quaternion.copy(camera.quaternion);
       gun.current.translateX(0.25);
-      gun.current.translateY(-0.22 + bob - (reload.current > 0 ? 0.12 : 0));
+      gun.current.translateY(-0.22 + bob - reloadPose * 0.16);
       gun.current.translateZ(-0.5 + recoil.current * 0.08);
-      gun.current.rotateX(recoil.current * 0.18 + (reload.current > 0 ? -0.6 : 0));
+      gun.current.rotateX(recoil.current * 0.18 - reloadPose * 0.72);
+      gun.current.rotateZ(reloadPose * 0.16);
+      if (magazine.current) magazine.current.position.y = -0.1 - reloadPose * 0.28;
     }
     if (flash.current) flash.current.intensity = recoil.current > 0.7 ? 8 : 0;
 
@@ -1104,6 +1238,10 @@ function World(
       b.left -= step;
       if (b.left <= 0) {
         fx.current?.remove(b.m);
+        if (b.m.material !== bulletMat) {
+          b.m.geometry.dispose();
+          (b.m.material as THREE.Material).dispose();
+        }
         return false;
       }
       return true;
@@ -1173,6 +1311,19 @@ function World(
           <pointLight color="#80ff20" intensity={0.55} distance={2.5} />
         </mesh>
       ))}
+      {underground && bookPickupRoom.current !== wave.current && (
+        <group position={[-13.2, 1.35, -3]}>
+          <mesh rotation-x={-0.18} rotation-z={-0.12} castShadow>
+            <boxGeometry args={[0.42, 0.08, 0.32]} />
+            <meshStandardMaterial color="#512e71" emissive="#6f32a5" emissiveIntensity={0.65} />
+          </mesh>
+          <mesh position={[0, 0.08, 0]} rotation-x={-0.18} rotation-z={-0.12}>
+            <boxGeometry args={[0.38, 0.025, 0.29]} />
+            <meshStandardMaterial color="#c7a8e8" roughness={0.75} />
+          </mesh>
+          <pointLight color="#9b55e8" intensity={0.7} distance={2.2} />
+        </group>
+      )}
       {remoteIds.map((id) => {
         const r = remotes.current.get(id);
         return r ? <RemoteMesh key={id} r={r} foe={mode === "duel"} /> : null;
@@ -1190,6 +1341,10 @@ function World(
         <mesh position={[0, -0.1, 0.08]} rotation-x={0.3}>
           <boxGeometry args={[0.06, 0.16, 0.08]} />
           <meshStandardMaterial color="#4a3020" />
+        </mesh>
+        <mesh ref={magazine} position={[0, -0.1, -0.02]}>
+          <boxGeometry args={[0.045, 0.14, 0.06]} />
+          <meshStandardMaterial color="#1c2023" metalness={0.55} roughness={0.48} />
         </mesh>
         {weapon.scope && (
           <mesh position={[0, 0.09, -0.05]} rotation-x={Math.PI / 2}>
@@ -1218,6 +1373,7 @@ export function Arena(props: ArenaProps) {
   const controlModeRef = useRef<ControlMode | null>(null);
   const [controlMode, setControlMode] = useState<ControlMode | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
+  const [avatarVisible, setAvatarVisible] = useState(false);
   const statsRef = useRef<ArenaSessionStats>({ seconds: 0, kills: 0, deaths: 0 });
   const exiting = useRef(false);
   const reloadRef = useRef<() => void>(() => {});
@@ -1290,10 +1446,38 @@ export function Arena(props: ArenaProps) {
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}
       >
-        <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} controlMode={controlModeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} statsRef={statsRef} />
+        <World
+          {...props}
+          onToggleAvatar={() => setAvatarVisible((visible) => !visible)}
+          api={api}
+          startRef={startRef}
+          resumeRef={resumeRef}
+          controlMode={controlModeRef}
+          paused={paused}
+          touchInput={touchInput}
+          reloadRef={reloadRef}
+          statsRef={statsRef}
+        />
       </Canvas>
 
       <TouchControls input={touchInput.current} scopedWeapon={weapon.scope} active={controlMode === "mobile"} onReload={() => reloadRef.current()} />
+      {avatarVisible && (
+        <div
+          className="fps-third-person-preview"
+          role="status"
+          aria-label="Third-person character view"
+        >
+          <CharacterPreview
+            shirtId={props.equippedShirt ?? null}
+            hatId={props.equippedHat ?? null}
+            pantsId={props.equippedPants ?? null}
+            bootsId={props.equippedBoots ?? null}
+            weaponId={props.weapon}
+            rotatable
+          />
+          <span>THIRD-PERSON PREVIEW · F5 TO HIDE</span>
+        </div>
+      )}
 
       {hud.aiming && (
         <div className="fps-scope">
@@ -1386,12 +1570,26 @@ export function Arena(props: ArenaProps) {
             <span />
           </div>
         )}
+        {props.dungeonVariant === "underground" &&
+          hud.enemiesLeft === 0 &&
+          hud.wave > 0 &&
+          hud.wave < DUNGEON_WAVES && (
+            <div className="fps-next-room-arrow" aria-label="Next room is up the stairs">
+              ↑ <span>NEXT ROOM</span>
+            </div>
+          )}
 
         {/* bottom HUD */}
         <div className="fps-bottom-hud absolute bottom-0 left-0 right-0 flex items-end justify-between p-5">
           <div className={`fps-health-panel ${hud.hp <= 35 ? "fps-health-critical" : ""}`}>
             <div className="fps-player-identity">
-              <CharacterPreview compact shirtId={props.equippedShirt ?? null} hatId={props.equippedHat ?? null} />
+              <CharacterPreview
+                compact
+                shirtId={props.equippedShirt ?? null}
+                hatId={props.equippedHat ?? null}
+                pantsId={props.equippedPants ?? null}
+                bootsId={props.equippedBoots ?? null}
+              />
               <div>
                 <span className="fps-micro-label">LEVEL {props.level ?? 1}</span>
                 <span className="fps-player-name">
@@ -1458,6 +1656,65 @@ export function Arena(props: ArenaProps) {
             <div className="fps-ammo-hint">[ R ] RELOAD{weapon.scope ? "  ·  [ RMB ] SCOPE" : ""}</div>
           </div>
         </div>
+        <div className="fps-hotbar" role="toolbar" aria-label="Inventory hotbar">
+          {Array.from({ length: 8 }, (_, slot) => {
+            const stack = props.hotbar.slots[slot];
+            return (
+              <button
+                key={slot}
+                type="button"
+                className={`fps-hotbar-slot ${props.hotbar.selected === slot ? "fps-hotbar-selected" : ""}`}
+                aria-label={`Slot ${slot + 1}${stack ? `: ${HOTBAR_ITEMS[stack.item].name}, ${stack.count}` : ": empty"}`}
+                aria-pressed={props.hotbar.selected === slot}
+                onClick={() => props.onSelectHotbarSlot(slot)}
+              >
+                <span className="fps-hotbar-number">{slot + 1}</span>
+                <span className="fps-hotbar-name">
+                  {stack ? HOTBAR_ITEMS[stack.item].name : "—"}
+                </span>
+                {stack && <span className="fps-hotbar-count">{stack.count}</span>}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className={`fps-hotbar-slot fps-hotbar-bundle ${props.hotbar.selected === 8 ? "fps-hotbar-selected" : ""}`}
+            title={
+              props.hotbar.bundle
+                .map((stack) => `${HOTBAR_ITEMS[stack.item].name} ×${stack.count}`)
+                .join(", ") || "Empty bundle"
+            }
+            aria-label={`Slot 9 bundle: ${props.hotbar.bundle.reduce((count, stack) => count + stack.count, 0)} of 10 items; cannot be dropped`}
+            aria-pressed={props.hotbar.selected === 8}
+            onClick={() => props.onSelectHotbarSlot(8)}
+          >
+            <span className="fps-hotbar-number">9</span>
+            <span className="fps-hotbar-name">BUNDLE</span>
+            <span className="fps-hotbar-count">
+              {props.hotbar.bundle.reduce((count, stack) => count + stack.count, 0)}/10
+            </span>
+          </button>
+        </div>
+        {props.hotbar.selected === 8 && props.hotbar.bundle.length > 0 && (
+          <div className="fps-hotbar-bundle-contents" aria-live="polite">
+            {props.hotbar.bundle
+              .map((stack) => `${HOTBAR_ITEMS[stack.item].name} ×${stack.count}`)
+              .join(" · ")}
+          </div>
+        )}
+        <button
+          type="button"
+          className="fps-hotbar-drop"
+          disabled={
+            paused || props.hotbar.selected === 8 || !props.hotbar.slots[props.hotbar.selected]
+          }
+          onClick={() => {
+            const dropped = props.onDropHotbarItem();
+            api.feed(dropped ? "ITEM DROPPED" : "NO ITEM IN THIS SLOT");
+          }}
+        >
+          {props.hotbar.selected === 8 ? "BUNDLE LOCKED" : "DROP [Q]"}
+        </button>
         <div className="fps-experience-position">
           <ExperienceBar level={props.level ?? 1} experience={props.experience ?? 0} compact />
         </div>
@@ -1484,7 +1741,7 @@ export function Arena(props: ArenaProps) {
               <p className="max-w-md text-center text-sm text-muted-foreground">
                 {controlMode === "mobile"
                   ? "Left joystick move · Right joystick aim · FIRE · JUMP · R reload"
-                  : `WASD move · Mouse aim · Click shoot · Space jump · Shift sprint · R reload${weapon.scope ? " · Right-click scope" : ""}`}
+                  : `WASD move · Mouse aim · Click shoot · Space jump · Shift sprint · R reload · 1-9 select item · Q drop · Bundle protected${weapon.scope ? " · Right-click scope" : ""}`}
               </p>
             )}
             <div className="pointer-events-auto flex gap-3">

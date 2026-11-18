@@ -2,7 +2,7 @@
 // the game and the credits server function agree on the numbers.
 
 export type Difficulty = "easy" | "normal" | "hard";
-export type Tier = "grunt" | "runner" | "brute";
+export type Tier = "grunt" | "runner" | "brute" | "enchanter";
 export type DungeonVariant = "gunfight" | "underground";
 
 export interface DifficultyDef {
@@ -65,8 +65,17 @@ export interface TierDef {
 
 export const TIERS: Record<Tier, TierDef> = {
   grunt: { id: "grunt", label: "Grunt", hp: 100, speed: 2.6, damage: 8, reach: 1.6, reward: 1 },
-  runner: { id: "runner", label: "Runner", hp: 60, speed: 5.2, damage: 5, reach: 1.4, reward: 2 },
+  runner: { id: "runner", label: "Runner", hp: 60, speed: 4.2, damage: 5, reach: 1.4, reward: 2 },
   brute: { id: "brute", label: "Brute", hp: 240, speed: 1.7, damage: 20, reach: 2.0, reward: 4 },
+  enchanter: {
+    id: "enchanter",
+    label: "Enchanter",
+    hp: 150,
+    speed: 2.1,
+    damage: 12,
+    reach: 1.7,
+    reward: 6,
+  },
 };
 
 /** Total enemies in a dungeon wave. */
@@ -112,7 +121,7 @@ export function scaledTier(diff: Difficulty, tier: Tier): TierDef {
   };
 }
 
-export const UNDERGROUND_ROOM_HALF_SIZE = 14;
+export const UNDERGROUND_ROOM_HALF_SIZE = 18;
 
 /** Zombie rooms grow in population and strength while staying inside the room. */
 export function undergroundZombieCount(diff: Difficulty, room: number): number {
@@ -127,11 +136,12 @@ export function undergroundSpawnPlan(diff: Difficulty, room: number, seed: numbe
 
   return Array.from({ length: count }, (_, i) => {
     let tier: Tier = "grunt";
-    if (depth >= 4 && i % 5 === 4) tier = "brute";
+    if (depth >= 2 && i === 0 && rnd() < 0.035) tier = "enchanter";
+    else if (depth >= 4 && i % 5 === 4) tier = "brute";
     else if (depth >= 2 && i % 4 === 3) tier = "runner";
 
     const angle = rnd() * Math.PI * 2;
-    const radius = 6.5 + rnd() * 5;
+    const radius = 8.5 + rnd() * 5.5;
     return {
       id: i,
       tier,

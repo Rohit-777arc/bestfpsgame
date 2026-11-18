@@ -81,6 +81,8 @@ function ProfilePage() {
   const equippedBySlot = {
     shirt: progress.equippedShirt,
     hat: progress.equippedHat,
+    pants: progress.equippedPants,
+    boots: progress.equippedBoots,
   };
 
   return (
@@ -93,6 +95,8 @@ function ProfilePage() {
               <CharacterPreview
                 shirtId={progress.equippedShirt}
                 hatId={progress.equippedHat}
+                pantsId={progress.equippedPants}
+                bootsId={progress.equippedBoots}
                 weaponId={progress.equipped}
                 rotatable
               />
@@ -140,6 +144,8 @@ function ProfilePage() {
                 compact
                 shirtId={progress.equippedShirt}
                 hatId={progress.equippedHat}
+                pantsId={progress.equippedPants}
+                bootsId={progress.equippedBoots}
               />
               <div>
                 <div className="hub-info-kicker">CUSTOMIZATION SHOP</div>
@@ -155,7 +161,7 @@ function ProfilePage() {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
-              {(["shirt", "hat"] as const).map((value) => (
+              {(["shirt", "hat", "pants", "boots"] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -163,7 +169,11 @@ function ProfilePage() {
                   aria-pressed={slot === value}
                   onClick={() => setSlot(value)}
                 >
-                  {value === "shirt" ? "SHIRTS & OUTFITS" : "HEADWEAR"}
+                  {value === "shirt"
+                    ? "SHIRTS & OUTFITS"
+                    : value === "hat"
+                      ? "HEADWEAR"
+                      : value.toUpperCase()}
                 </button>
               ))}
             </div>
@@ -179,13 +189,13 @@ function ProfilePage() {
                     className={`mso-card flex flex-col gap-4 p-5 ${equipped ? "mso-sel" : ""}`}
                   >
                     <div className="flex items-start gap-4">
-                      <div
-                        className="cosmetic-swatch"
-                        style={{ backgroundColor: item.color }}
-                        aria-hidden="true"
-                      >
-                        {item.slot === "hat" ? "⌃" : "✦"}
-                      </div>
+                      <CharacterPreview
+                        compact
+                        shirtId={item.slot === "shirt" ? item.id : progress.equippedShirt}
+                        hatId={item.slot === "hat" ? item.id : progress.equippedHat}
+                        pantsId={item.slot === "pants" ? item.id : progress.equippedPants}
+                        bootsId={item.slot === "boots" ? item.id : progress.equippedBoots}
+                      />
                       <div className="min-w-0 flex-1">
                         <h3 className="mso-display text-xl">{item.name}</h3>
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">

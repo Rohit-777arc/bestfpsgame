@@ -7,10 +7,106 @@ import { waveCredits, type Difficulty } from "./sim/waves";
 import type { MapId } from "./sim/maps";
 import { COSMETICS, isCosmeticId, type CosmeticId, type CosmeticSlot } from "./sim/cosmetics";
 import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, waveExperience } from "./sim/progression";
-import { awardWaveCredits, collectExperience as collectExperienceForAccount, equipCosmeticItem, equipWeapon, getProfile, importGuestProgress, purchaseCosmetic, purchaseWeapon, recordPlayerSession, renamePlayer } from "./profile.functions";
+import {
+  canCraft,
+  canEnchant,
+  CRAFTING_RECIPES,
+  EMPTY_LOOT_INVENTORY,
+  rollDungeonDrop,
+  type LootInventory,
+} from "./sim/dungeonLoot";
+import {
+  addHotbarItem,
+  HOTBAR_BUNDLE_LIMIT,
+  HOTBAR_SLOT_COUNT,
+  HOTBAR_STACK_LIMIT,
+  parseHotbar,
+  removeHotbarItem,
+  type HotbarItemId,
+} from "./sim/hotbar";
+import {
+  awardWaveCredits,
+  collectExperience as collectExperienceForAccount,
+  equipCosmeticItem,
+  equipWeapon,
+  getProfile,
+  importGuestProgress,
+  purchaseCosmetic,
+  purchaseWeapon,
+  recordPlayerSession,
+  renamePlayer,
+  spendCreditsForCraft,
+} from "./profile.functions";
 
 const STORE_KEY = "mso-progress-v1";
 const IMPORT_KEY = "mso-imported-v1";
+const LOOT_KEY_PREFIX = "mso-dungeon-loot-v1:";
+let lootStorageKey = `${LOOT_KEY_PREFIX}guest`;
+
+function loadLoot(key: string): LootInventory {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return structuredClone(EMPTY_LOOT_INVENTORY);
+    const parsed = JSON.parse(raw) as Partial<LootInventory>;
+    const loot: LootInventory = {
+      materials: {
+        scrap: Math.max(0, Math.floor(parsed.materials?.scrap ?? 0)),
+        bone: Math.max(0, Math.floor(parsed.materials?.bone ?? 0)),
+        essence: Math.max(0, Math.floor(parsed.materials?.essence ?? 0)),
+      },
+      books: Math.max(0, Math.floor(parsed.books ?? 0)),
+      shards: Math.max(0, Math.floor(parsed.shards ?? 0)),
+      crafted: Array.isArray(parsed.crafted)
+        ? parsed.crafted.filter((id) => typeof id === "string")
+        : [],
+      enchanted: Array.isArray(parsed.enchanted)
+        ? parsed.enchanted.filter((id) => typeof id === "string")
+        : [],
+      hotbar: parseHotbar(parsed.hotbar),
+    };
+    if (!parsed.hotbar) {
+      const oldItems: [HotbarItemId, number][] = [
+        ["scrap", loot.materials.scrap],
+        ["bone", loot.materials.bone],
+        ["essence", loot.materials.essence],
+        ["book", loot.books],
+        ["shard", loot.shards],
+        ...loot.crafted
+          .filter(
+            (id): id is "scrap-sword" | "bone-armor" => id === "scrap-sword" || id === "bone-armor",
+          )
+          .map((id): [HotbarItemId, number] => [id, 1]),
+      ];
+      let hotbar = loot.hotbar;
+      const migrationLimit = HOTBAR_SLOT_COUNT * HOTBAR_STACK_LIMIT + HOTBAR_BUNDLE_LIMIT;
+      for (const [item, count] of oldItems) {
+        for (let i = 0; i < Math.min(count, migrationLimit); i++) {
+          const added = addHotbarItem(hotbar, item);
+          if (added.accepted) hotbar = added.inventory;
+        }
+      }
+      loot.hotbar = hotbar;
+    }
+    return loot;
+  } catch {
+    return structuredClone(EMPTY_LOOT_INVENTORY);
+  }
+}
+
+function saveLoot(loot: LootInventory) {
+  localStorage.setItem(lootStorageKey, JSON.stringify(loot));
+}
+
+function removeLootItem(loot: LootInventory, item: HotbarItemId): void {
+  if (item === "book") loot.books = Math.max(0, loot.books - 1);
+  else if (item === "shard") loot.shards = Math.max(0, loot.shards - 1);
+  else if (item === "scrap-sword" || item === "bone-armor") {
+    loot.crafted = loot.crafted.filter((crafted) => crafted !== item);
+    loot.enchanted = loot.enchanted.filter((enchanted) => !enchanted.startsWith(`${item}:`));
+  } else {
+    loot.materials[item] = Math.max(0, loot.materials[item] - 1);
+  }
+}
 
 export interface Progress {
   kind: "loading" | "guest" | "account";
@@ -27,6 +123,9 @@ export interface Progress {
   cosmetics: CosmeticId[];
   equippedShirt: CosmeticId | null;
   equippedHat: CosmeticId | null;
+  equippedPants: CosmeticId | null;
+  equippedBoots: CosmeticId | null;
+  loot: LootInventory;
   email?: string | undefined;
 }
 
@@ -47,6 +146,9 @@ let state: Progress = {
   cosmetics: [],
   equippedShirt: null,
   equippedHat: null,
+  equippedPants: null,
+  equippedBoots: null,
+  loot: structuredClone(EMPTY_LOOT_INVENTORY),
 };
 const listeners = new Set<Listener>();
 
@@ -86,6 +188,13 @@ function loadGuest(): Progress {
         cosmetics: [...new Set((p.cosmetics ?? []).filter(isCosmeticId))],
         equippedShirt: isCosmeticId(String(p.equippedShirt)) ? (p.equippedShirt as CosmeticId) : null,
         equippedHat: isCosmeticId(String(p.equippedHat)) ? (p.equippedHat as CosmeticId) : null,
+        equippedPants: isCosmeticId(String(p.equippedPants))
+          ? (p.equippedPants as CosmeticId)
+          : null,
+        equippedBoots: isCosmeticId(String(p.equippedBoots))
+          ? (p.equippedBoots as CosmeticId)
+          : null,
+        loot: loadLoot(lootStorageKey),
       };
     }
   } catch {
@@ -106,6 +215,9 @@ function loadGuest(): Progress {
     cosmetics: [],
     equippedShirt: null,
     equippedHat: null,
+    equippedPants: null,
+    equippedBoots: null,
+    loot: loadLoot(lootStorageKey),
   };
   saveGuest(fresh);
   return fresh;
@@ -128,6 +240,8 @@ function saveGuest(p: Progress) {
       cosmetics: p.cosmetics,
       equippedShirt: p.equippedShirt,
       equippedHat: p.equippedHat,
+      equippedPants: p.equippedPants,
+      equippedBoots: p.equippedBoots,
     }),
   );
 }
@@ -140,6 +254,7 @@ function guestName(): string {
 export async function initProgress(): Promise<void> {
   const { data } = await supabase.auth.getSession();
   if (data.session?.user) {
+    lootStorageKey = `${LOOT_KEY_PREFIX}${data.session.user.id}`;
     try {
       const profile = await getProfile();
       state = {
@@ -163,6 +278,15 @@ export async function initProgress(): Promise<void> {
           typeof profile.equippedHat === "string" && isCosmeticId(profile.equippedHat)
             ? profile.equippedHat
             : null,
+        equippedPants:
+          typeof profile.equippedPants === "string" && isCosmeticId(profile.equippedPants)
+            ? profile.equippedPants
+            : null,
+        equippedBoots:
+          typeof profile.equippedBoots === "string" && isCosmeticId(profile.equippedBoots)
+            ? profile.equippedBoots
+            : null,
+        loot: loadLoot(lootStorageKey),
         email: data.session.user.email ?? undefined,
       };
       notify();
@@ -172,6 +296,7 @@ export async function initProgress(): Promise<void> {
       // signed in but no profile row yet (e.g. email not confirmed flow) — fall back to guest view
     }
   }
+  lootStorageKey = `${LOOT_KEY_PREFIX}guest`;
   state = loadGuest();
   notify();
 }
@@ -387,7 +512,13 @@ export async function setEquippedCosmetic(slot: CosmeticSlot, id: CosmeticId | n
   }
   state = {
     ...state,
-    ...(slot === "shirt" ? { equippedShirt: id } : { equippedHat: id }),
+    ...(slot === "shirt"
+      ? { equippedShirt: id }
+      : slot === "hat"
+        ? { equippedHat: id }
+        : slot === "pants"
+          ? { equippedPants: id }
+          : { equippedBoots: id }),
   };
   if (state.kind === "guest") saveGuest(state);
   notify();
@@ -401,6 +532,143 @@ export async function setName(name: string): Promise<void> {
     saveGuest({ ...state, name: clean });
   }
   state = { ...state, name: clean };
+  notify();
+}
+
+export function awardDungeonLoot(tier: "grunt" | "runner" | "brute" | "enchanter") {
+  const rolledDrop = rollDungeonDrop(tier);
+  const loot: LootInventory = {
+    ...state.loot,
+    materials: { ...state.loot.materials },
+    hotbar: structuredClone(state.loot.hotbar),
+  };
+  const drop: ReturnType<typeof rollDungeonDrop> = {
+    materials: {},
+    book: false,
+    shard: false,
+    inventoryFull: false,
+  };
+  for (const [material, amount] of Object.entries(rolledDrop.materials)) {
+    if (!amount) continue;
+    for (let i = 0; i < amount; i++) {
+      const added = addHotbarItem(loot.hotbar, material as HotbarItemId);
+      if (!added.accepted) {
+        drop.inventoryFull = true;
+        continue;
+      }
+      loot.hotbar = added.inventory;
+      if (added.replaced) removeLootItem(loot, added.replaced);
+      loot.materials[material as keyof LootInventory["materials"]]++;
+      drop.materials[material as keyof LootInventory["materials"]] =
+        (drop.materials[material as keyof LootInventory["materials"]] ?? 0) + 1;
+    }
+  }
+  if (rolledDrop.book) {
+    const added = addHotbarItem(loot.hotbar, "book");
+    if (added.accepted) {
+      loot.hotbar = added.inventory;
+      if (added.replaced) removeLootItem(loot, added.replaced);
+      loot.books++;
+      drop.book = true;
+    } else drop.inventoryFull = true;
+  }
+  if (rolledDrop.shard) {
+    const added = addHotbarItem(loot.hotbar, "shard");
+    if (added.accepted) {
+      loot.hotbar = added.inventory;
+      if (added.replaced) removeLootItem(loot, added.replaced);
+      loot.shards++;
+      drop.shard = true;
+    } else drop.inventoryFull = true;
+  }
+  state = { ...state, loot };
+  saveLoot(loot);
+  notify();
+  return drop;
+}
+
+export function findEnchantingBook(): boolean {
+  const added = addHotbarItem(state.loot.hotbar, "book");
+  if (!added.accepted) return false;
+  const loot = { ...state.loot, hotbar: added.inventory };
+  if (added.replaced) removeLootItem(loot, added.replaced);
+  state = {
+    ...state,
+    loot: { ...loot, books: loot.books + 1 },
+  };
+  saveLoot(state.loot);
+  notify();
+  return true;
+}
+
+export async function craftDungeonItem(recipeId: string): Promise<void> {
+  const recipe = CRAFTING_RECIPES.find((item) => item.id === recipeId);
+  if (!recipe || !canCraft(state.loot, recipeId, state.credits)) {
+    throw new Error("You need more materials or credits to craft this item");
+  }
+  const hotbar = addHotbarItem(state.loot.hotbar, recipe.id);
+  if (!hotbar.accepted) {
+    throw new Error("Your hotbar and bundle are full; make room before crafting");
+  }
+  const materials = { ...state.loot.materials };
+  for (const [material, amount] of Object.entries(recipe.materials)) {
+    materials[material as keyof typeof materials] -= amount;
+  }
+  const loot = {
+    ...state.loot,
+    materials,
+    crafted: [...state.loot.crafted, recipeId],
+    hotbar: hotbar.inventory,
+  };
+  if (hotbar.replaced && !(hotbar.replaced in recipe.materials)) {
+    removeLootItem(loot, hotbar.replaced);
+  }
+  const credits =
+    state.kind === "account"
+      ? (await spendCreditsForCraft({ data: { recipeId } })).credits
+      : state.credits - recipe.fee;
+  state = { ...state, credits, loot };
+  if (state.kind === "guest") saveGuest(state);
+  saveLoot(loot);
+  notify();
+}
+
+export function selectHotbarSlot(slot: number): void {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= 9) return;
+  state = {
+    ...state,
+    loot: { ...state.loot, hotbar: { ...state.loot.hotbar, selected: slot } },
+  };
+  saveLoot(state.loot);
+  notify();
+}
+
+export function dropHotbarItem(): boolean {
+  const { inventory: hotbar, item } = removeHotbarItem(
+    state.loot.hotbar,
+    state.loot.hotbar.selected,
+  );
+  if (!item) return false;
+  const loot: LootInventory = { ...state.loot, hotbar };
+  removeLootItem(loot, item);
+  state = { ...state, loot };
+  saveLoot(loot);
+  notify();
+  return true;
+}
+
+export function enchantDungeonItem(itemId: string, enchantmentId: string): void {
+  if (!canEnchant(state.loot, itemId, enchantmentId)) {
+    throw new Error("You need a crafted item, an enchanting book, and an enchanting shard");
+  }
+  const loot = {
+    ...state.loot,
+    books: state.loot.books - 1,
+    shards: state.loot.shards - 1,
+    enchanted: [...state.loot.enchanted, `${itemId}:${enchantmentId}`],
+  };
+  state = { ...state, loot };
+  saveLoot(loot);
   notify();
 }
 

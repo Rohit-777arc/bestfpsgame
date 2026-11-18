@@ -29,6 +29,20 @@
       "when": 1794918764119,
       "tag": "0003_player_directory_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795000000000,
+      "tag": "0004_dungeon_credit_spend",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795000000001,
+      "tag": "0005_equipped_trousers_boots",
+      "breakpoints": true
     }
   ]
 }

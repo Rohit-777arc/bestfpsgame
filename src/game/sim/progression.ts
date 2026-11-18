@@ -13,6 +13,7 @@ export const ENEMY_EXPERIENCE = {
   grunt: 30,
   runner: 45,
   brute: 75,
+  enchanter: 100,
 } as const;
 
 export function experienceRequiredForLevel(level: number): number {

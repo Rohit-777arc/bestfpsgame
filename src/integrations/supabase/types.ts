@@ -68,7 +68,9 @@ export type Database = {
           display_name: string;
           dungeons_completed: number;
           enemies_killed: number;
+          equipped_boots: string | null;
           equipped_hat: string | null;
+          equipped_pants: string | null;
           equipped_shirt: string | null;
           equipped_weapon: string;
           experience: number;
@@ -83,7 +85,9 @@ export type Database = {
           display_name?: string;
           dungeons_completed?: number;
           enemies_killed?: number;
+          equipped_boots?: string | null;
           equipped_hat?: string | null;
+          equipped_pants?: string | null;
           equipped_shirt?: string | null;
           equipped_weapon?: string;
           experience?: number;
@@ -98,7 +102,9 @@ export type Database = {
           display_name?: string;
           dungeons_completed?: number;
           enemies_killed?: number;
+          equipped_boots?: string | null;
           equipped_hat?: string | null;
+          equipped_pants?: string | null;
           equipped_shirt?: string | null;
           equipped_weapon?: string;
           experience?: number;
@@ -157,6 +163,12 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      spend_player_credits: {
+        Args: {
+          credit_amount: number;
+        };
+        Returns: number;
+      };
       record_player_session: {
         Args: {
           death_count: number;

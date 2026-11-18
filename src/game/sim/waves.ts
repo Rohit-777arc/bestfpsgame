@@ -3,6 +3,7 @@
 
 export type Difficulty = "easy" | "normal" | "hard";
 export type Tier = "grunt" | "runner" | "brute";
+export type DungeonVariant = "gunfight" | "underground";
 
 export interface DifficultyDef {
   id: Difficulty;
@@ -108,6 +109,46 @@ export function scaledTier(diff: Difficulty, tier: Tier): TierDef {
     hp: Math.round(t.hp * d.hpMul),
     speed: t.speed * d.speedMul,
     damage: Math.max(1, Math.round(t.damage * d.dmgMul)),
+  };
+}
+
+export const UNDERGROUND_ROOM_HALF_SIZE = 14;
+
+/** Zombie rooms grow in population and strength while staying inside the room. */
+export function undergroundZombieCount(diff: Difficulty, room: number): number {
+  const depth = Math.max(1, Math.floor(room));
+  return Math.min(20, 3 + (depth - 1) * 2 + DIFFICULTIES[diff].enemiesPerWave - 1);
+}
+
+export function undergroundSpawnPlan(diff: Difficulty, room: number, seed: number): EnemySpawn[] {
+  const depth = Math.max(1, Math.floor(room));
+  const count = undergroundZombieCount(diff, depth);
+  const rnd = mulberry32(seed);
+
+  return Array.from({ length: count }, (_, i) => {
+    let tier: Tier = "grunt";
+    if (depth >= 4 && i % 5 === 4) tier = "brute";
+    else if (depth >= 2 && i % 4 === 3) tier = "runner";
+
+    const angle = rnd() * Math.PI * 2;
+    const radius = 6.5 + rnd() * 5;
+    return {
+      id: i,
+      tier,
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
+    };
+  });
+}
+
+export function scaledUndergroundTier(diff: Difficulty, tier: Tier, room: number): TierDef {
+  const base = scaledTier(diff, tier);
+  const depth = Math.min(8, Math.max(0, Math.floor(room) - 1));
+  return {
+    ...base,
+    hp: Math.round(base.hp * (1 + depth * 0.12)),
+    speed: base.speed * (1 + depth * 0.08),
+    damage: Math.max(1, Math.round(base.damage * (1 + depth * 0.1))),
   };
 }
 

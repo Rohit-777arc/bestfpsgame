@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addExperience,
   DUNGEON_WAVES,
+  enemyExperience,
   experienceRequiredForLevel,
   totalExperience,
   waveExperience,
@@ -33,5 +34,8 @@ describe("player experience", () => {
     expect(DUNGEON_WAVES).toBe(5);
     expect(waveExperience("easy")).toBeGreaterThan(0);
     expect(waveExperience("hard")).toBeGreaterThan(waveExperience("easy"));
+    expect(enemyExperience("grunt")).toBe(30);
+    expect(enemyExperience("runner")).toBeGreaterThan(enemyExperience("grunt"));
+    expect(enemyExperience("brute")).toBeGreaterThan(enemyExperience("runner"));
   });
 });

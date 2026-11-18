@@ -5,7 +5,8 @@ import { TopBar } from "@/components/game/TopBar";
 import { PageShell } from "@/components/game/Picker";
 import { useProgress } from "@/components/game/useProgress";
 import { WEAPONS, WEAPON_IDS, shotInterval, type WeaponId } from "@/game/sim/weapons";
-import { buyWeapon, setEquipped } from "@/game/progress";
+import { buyCosmetic, buyWeapon, setEquipped, setEquippedCosmetic } from "@/game/progress";
+import { COSMETICS, type CosmeticId } from "@/game/sim/cosmetics";
 
 export const Route = createFileRoute("/armory")({
   head: () => ({
@@ -35,6 +36,8 @@ function Stat({ label, value, max }: { label: string; value: number; max: number
 function ArmoryPage() {
   const p = useProgress();
   const [busy, setBusy] = useState<WeaponId | null>(null);
+  const [busyArmor, setBusyArmor] = useState<CosmeticId | null>(null);
+  const [section, setSection] = useState<"weapons" | "armor">("weapons");
 
   async function act(id: WeaponId) {
     setBusy(id);
@@ -54,10 +57,35 @@ function ArmoryPage() {
     }
   }
 
+  async function actArmor(id: CosmeticId) {
+    const item = COSMETICS.find((cosmetic) => cosmetic.id === id);
+    if (!item || item.slot !== "shirt") return;
+    setBusyArmor(id);
+    try {
+      if (p.cosmetics.includes(id)) {
+        await setEquippedCosmetic("shirt", id);
+        toast.success(`${item.name} equipped`);
+      } else {
+        await buyCosmetic(id);
+        await setEquippedCosmetic("shirt", id);
+        toast.success(`${item.name} unlocked and equipped`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not equip armor");
+    } finally {
+      setBusyArmor(null);
+    }
+  }
+
   return (
     <>
       <TopBar />
-      <PageShell title="ARMORY" kicker="WEAPONS">
+      <PageShell title="ARMORY" kicker="LOADOUT & ARMOR">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Armory sections">
+          <button type="button" className={`mso-btn ${section === "weapons" ? "" : "mso-btn-ghost"}`} role="tab" aria-selected={section === "weapons"} onClick={() => setSection("weapons")}>WEAPONS</button>
+          <button type="button" className={`mso-btn ${section === "armor" ? "" : "mso-btn-ghost"}`} role="tab" aria-selected={section === "armor"} onClick={() => setSection("armor")}>ARMOR & OUTFITS</button>
+        </div>
+        {section === "weapons" ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {WEAPON_IDS.map((id) => {
             const w = WEAPONS[id];
@@ -91,6 +119,38 @@ function ArmoryPage() {
             );
           })}
         </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {COSMETICS.filter((item) => item.slot === "shirt").map((item) => {
+              const owned = p.cosmetics.includes(item.id);
+              const equipped = p.equippedShirt === item.id;
+              const short = !owned && p.credits < item.price;
+              return (
+                <article key={item.id} className={`mso-card flex flex-col gap-4 p-5 ${equipped ? "mso-sel" : ""}`}>
+                  <div className="flex items-start gap-4">
+                    <div className="cosmetic-swatch" style={{ backgroundColor: item.color }} aria-hidden="true">✦</div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="mso-display text-xl">{item.name}</h2>
+                      <p className="text-sm text-muted-foreground">Protective look · {item.style}</p>
+                    </div>
+                    <div className="mso-chip text-sm">
+                      {owned ? (equipped ? "EQUIPPED" : "OWNED") : <><span className="mso-coin" />{item.price}</>}
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Character armor appearance. Your selected outfit is saved to your profile.</p>
+                  <button
+                    type="button"
+                    className={`mso-btn mt-auto ${owned ? "mso-btn-ghost" : ""}`}
+                    disabled={equipped || short || busyArmor !== null || p.kind === "loading"}
+                    onClick={() => void actArmor(item.id)}
+                  >
+                    {equipped ? "EQUIPPED" : owned ? "EQUIP" : short ? `NEED ${item.price - p.credits} MORE` : "BUY & EQUIP"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </PageShell>
     </>
   );

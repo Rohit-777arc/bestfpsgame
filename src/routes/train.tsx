@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import { TopBar } from "@/components/game/TopBar";
 import { MAP_SWATCH, PageShell, Picker } from "@/components/game/Picker";
 import { useProgress } from "@/components/game/useProgress";
 import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
+import { recordSessionStats } from "@/game/progress";
 
 export const Route = createFileRoute("/train")({
   ssr: false,
@@ -43,7 +45,14 @@ function TrainPage() {
         experience={p.experience}
         equippedShirt={p.equippedShirt}
         equippedHat={p.equippedHat}
-        onExit={() => setPlaying(false)}
+        onExit={async (stats) => {
+          try {
+            await recordSessionStats(stats);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not save your player stats");
+          }
+          setPlaying(false);
+        }}
       />
     );
   }

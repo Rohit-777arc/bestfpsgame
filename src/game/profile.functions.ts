@@ -11,7 +11,7 @@ export const getProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const [{ data: profile }, { data: weapons }, { data: cosmetics }] = await Promise.all([
-      supabase.from("profiles").select("id, display_name, credits, equipped_weapon, level, experience, dungeons_completed, equipped_shirt, equipped_hat").eq("id", userId).single(),
+      supabase.from("profiles").select("id, display_name, credits, equipped_weapon, level, experience, dungeons_completed, play_seconds, enemies_killed, deaths, equipped_shirt, equipped_hat").eq("id", userId).single(),
       supabase.from("profile_weapons").select("weapon_id").eq("user_id", userId),
       supabase.from("profile_cosmetics").select("cosmetic_id").eq("user_id", userId),
     ]);
@@ -21,11 +21,50 @@ export const getProfile = createServerFn({ method: "GET" })
       level: profile?.level ?? 1,
       experience: profile?.experience ?? 0,
       dungeonsCompleted: profile?.dungeons_completed ?? 0,
+      playSeconds: profile?.play_seconds ?? 0,
+      enemiesKilled: profile?.enemies_killed ?? 0,
+      deaths: profile?.deaths ?? 0,
       equipped: profile?.equipped_weapon ?? "scout-pistol",
       weapons: (weapons ?? []).map((w) => String(w.weapon_id)),
       cosmetics: (cosmetics ?? []).map((item) => String(item.cosmetic_id)),
       equippedShirt: profile?.equipped_shirt ?? null,
       equippedHat: profile?.equipped_hat ?? null,
+    };
+  });
+
+const playerSearchInput = z.object({ query: z.string().trim().min(2).max(32) });
+
+export const searchPlayers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => playerSearchInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: players, error } = await context.supabase.rpc("search_player_directory", {
+      search_term: data.query,
+    });
+    if (error) throw new Error("Could not search players");
+    return players;
+  });
+
+const sessionStatsInput = z.object({
+  seconds: z.number().int().min(0).max(86_400),
+  kills: z.number().int().min(0).max(10_000),
+  deaths: z.number().int().min(0).max(10_000),
+});
+
+export const recordPlayerSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => sessionStatsInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: stats, error } = await context.supabase.rpc("record_player_session", {
+      played_seconds: data.seconds,
+      kill_count: data.kills,
+      death_count: data.deaths,
+    });
+    if (error || !stats?.[0]) throw new Error("Could not save player stats");
+    return {
+      playSeconds: stats[0].play_seconds,
+      enemiesKilled: stats[0].enemies_killed,
+      deaths: stats[0].deaths,
     };
   });
 
@@ -107,6 +146,28 @@ export const awardWaveCredits = createServerFn({ method: "POST" })
       runId,
       awarded: payout,
       awardedExperience: gainedExperience,
+    };
+  });
+
+const experienceInput = z.object({ amount: z.number().int().min(1).max(100) });
+
+export const collectExperience = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => experienceInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("level, experience")
+      .eq("id", userId)
+      .single();
+    if (profileError || !profile) throw new Error("Profile not found");
+    const next = addExperience(profile, data.amount);
+    const { error } = await supabase.from("profiles").update(next).eq("id", userId);
+    if (error) throw new Error("Could not save experience");
+    return {
+      ...next,
+      levelsGained: next.level - profile.level,
     };
   });
 
@@ -236,6 +297,9 @@ const importInput = z.object({
   level: z.number().int().min(1).max(1_000_000),
   experience: z.number().int().min(0).max(1_000_000_000),
   dungeonsCompleted: z.number().int().min(0).max(1_000_000),
+  playSeconds: z.number().int().min(0).max(1_000_000_000),
+  enemiesKilled: z.number().int().min(0).max(1_000_000),
+  deaths: z.number().int().min(0).max(1_000_000),
   weapons: z.array(z.string()).max(10),
   cosmetics: z.array(z.string()).max(20),
 });
@@ -246,7 +310,7 @@ export const importGuestProgress = createServerFn({ method: "POST" })
   .inputValidator((input) => importInput.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: prof } = await supabase.from("profiles").select("credits, level, experience, dungeons_completed").eq("id", userId).single();
+    const { data: prof } = await supabase.from("profiles").select("credits, level, experience, dungeons_completed, play_seconds, enemies_killed, deaths").eq("id", userId).single();
     const target = Math.max(prof?.credits ?? 0, data.credits);
     const valid = data.weapons.filter(isWeaponId);
     if (valid.length) {
@@ -259,12 +323,18 @@ export const importGuestProgress = createServerFn({ method: "POST" })
     const guestTotal = totalExperience(data);
     const xp = addExperience(prof ?? { level: 1, experience: 0 }, Math.max(0, guestTotal - currentTotal));
     const dungeonsCompleted = Math.max(prof?.dungeons_completed ?? 0, data.dungeonsCompleted);
+    const playSeconds = Math.max(prof?.play_seconds ?? 0, data.playSeconds);
+    const enemiesKilled = Math.max(prof?.enemies_killed ?? 0, data.enemiesKilled);
+    const deaths = Math.max(prof?.deaths ?? 0, data.deaths);
     await supabase
       .from("profiles")
       .update({
         credits: target,
         ...(guestTotal > currentTotal ? xp : {}),
         dungeons_completed: dungeonsCompleted,
+        play_seconds: playSeconds,
+        enemies_killed: enemiesKilled,
+        deaths,
       })
       .eq("id", userId);
     const validCosmetics = data.cosmetics.filter(isCosmeticId);
@@ -279,6 +349,9 @@ export const importGuestProgress = createServerFn({ method: "POST" })
       level: Math.max(prof?.level ?? 1, xp.level),
       experience: xp.experience,
       dungeonsCompleted,
+      playSeconds,
+      enemiesKilled,
+      deaths,
       weapons: valid,
       cosmetics: validCosmetics,
     };

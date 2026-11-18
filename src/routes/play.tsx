@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { TopBar } from "@/components/game/TopBar";
 import { MAP_SWATCH, PageShell, Picker } from "@/components/game/Picker";
 import { useProgress } from "@/components/game/useProgress";
 import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
-import { DIFFICULTIES, type Difficulty } from "@/game/sim/waves";
+import { DIFFICULTIES, type Difficulty, type DungeonVariant } from "@/game/sim/waves";
 import { WEAPONS } from "@/game/sim/weapons";
-import { awardWave } from "@/game/progress";
+import { awardWave, collectExperience, recordSessionStats } from "@/game/progress";
 
 export const Route = createFileRoute("/play")({
   ssr: false,
@@ -28,6 +29,7 @@ function PlayPage() {
   const p = useProgress();
   const [map, setMap] = useState<MapId>("desert");
   const [diff, setDiff] = useState<Difficulty>("easy");
+  const [dungeonVariant, setDungeonVariant] = useState<DungeonVariant>("gunfight");
   const [playing, setPlaying] = useState(false);
   const runId = useRef<string | null>(null);
 
@@ -35,6 +37,7 @@ function PlayPage() {
     return (
       <Arena
         mode="dungeon"
+        dungeonVariant={dungeonVariant}
         map={map}
         difficulty={diff}
         weapon={p.equipped}
@@ -49,8 +52,14 @@ function PlayPage() {
           runId.current = res.runId;
           return res;
         }}
+        onExperienceCollected={collectExperience}
         onRestart={() => { runId.current = null; }}
-        onExit={() => {
+        onExit={async (stats) => {
+          try {
+            await recordSessionStats(stats);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not save your player stats");
+          }
           runId.current = null;
           setPlaying(false);
         }}
@@ -61,13 +70,24 @@ function PlayPage() {
   return (
     <>
       <TopBar />
-      <PageShell title="DUNGEON" kicker="WAVE SURVIVAL">
+      <PageShell title="DUNGEON" kicker="CHOOSE YOUR DESCENT">
         <Picker
-          label="MAP"
-          value={map}
-          onChange={setMap}
-          options={MAP_IDS.map((id) => ({ id, title: MAPS[id].name, sub: MAPS[id].blurb, swatch: MAP_SWATCH[id] }))}
+          label="DUNGEON MODE"
+          value={dungeonVariant}
+          onChange={setDungeonVariant}
+          options={[
+            { id: "gunfight", title: "GUNFIGHT", sub: "Five waves of armed enemies. Hold the arena and fight back." },
+            { id: "underground", title: "UNDERGROUND", sub: "Descend through five ancient rooms. Unarmed zombies grow in number and strength." },
+          ]}
         />
+        {dungeonVariant === "gunfight" && (
+          <Picker
+            label="MAP"
+            value={map}
+            onChange={setMap}
+            options={MAP_IDS.map((id) => ({ id, title: MAPS[id].name, sub: MAPS[id].blurb, swatch: MAP_SWATCH[id] }))}
+          />
+        )}
         <Picker
           label="DIFFICULTY"
           value={diff}
@@ -84,6 +104,12 @@ function PlayPage() {
           </button>
           <span className="font-bold text-muted-foreground">Carrying: {WEAPONS[p.equipped].name}</span>
         </div>
+        {dungeonVariant === "underground" && (
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Clear each room to climb to the next. Every room brings more zombies, tougher tiers, and a darker ancient chamber.
+            Keep your distance: their only attack is up close.
+          </p>
+        )}
       </PageShell>
     </>
   );

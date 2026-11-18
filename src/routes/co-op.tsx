@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { TopBar } from "@/components/game/TopBar";
 import { MAP_SWATCH, PageShell, Picker } from "@/components/game/Picker";
 import { useProgress } from "@/components/game/useProgress";
 import { Arena } from "@/components/fps/Arena";
 import { MAPS, MAP_IDS, type MapId } from "@/game/sim/maps";
 import { isRoomCode } from "@/game/room-code";
-import { awardWave } from "@/game/progress";
+import { awardWave, collectExperience, recordSessionStats } from "@/game/progress";
 import {
   makeRoomCode,
   playerId,
@@ -102,6 +103,7 @@ function CoopPage() {
         equippedShirt={p.equippedShirt}
         equippedHat={p.equippedHat}
         net={{ channelRef, bus, roster }}
+        onExperienceCollected={collectExperience}
         {...(mode === "coop"
           ? {
               onWaveCleared: async (wave: number) => {
@@ -112,7 +114,14 @@ function CoopPage() {
             }
           : {})}
         onRestart={() => { runId.current = null; }}
-        onExit={() => setPlaying(false)}
+        onExit={async (stats) => {
+          try {
+            await recordSessionStats(stats);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not save your player stats");
+          }
+          setPlaying(false);
+        }}
       />
     );
   }

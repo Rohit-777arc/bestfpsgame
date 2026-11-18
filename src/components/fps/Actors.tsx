@@ -42,6 +42,13 @@ const skin = new THREE.MeshStandardMaterial({ color: "#c8a77a", roughness: 0.85 
 const strap = new THREE.MeshStandardMaterial({ color: "#3a2a1a", roughness: 0.7 });
 const bullseye = new THREE.MeshStandardMaterial({ color: "#a8322a", roughness: 0.8 });
 const visorMat = new THREE.MeshStandardMaterial({ color: "#ffd23b", emissive: "#ffb000", emissiveIntensity: 0.8 });
+const zombieSkin = new THREE.MeshStandardMaterial({ color: "#777e68", roughness: 1 });
+const zombieSkinLight = new THREE.MeshStandardMaterial({ color: "#96977c", roughness: 0.96 });
+const zombieSocket = new THREE.MeshStandardMaterial({ color: "#1c2019", roughness: 1 });
+const zombieEye = new THREE.MeshStandardMaterial({ color: "#b69e58", emissive: "#51401d", emissiveIntensity: 0.35, roughness: 0.8 });
+const zombieMouth = new THREE.MeshStandardMaterial({ color: "#281c18", roughness: 1 });
+const zombieScar = new THREE.MeshStandardMaterial({ color: "#45352d", roughness: 1 });
+const zombieBone = new THREE.MeshStandardMaterial({ color: "#b6ac8b", roughness: 1 });
 
 export const TIER_LOOK: Record<Tier, { cloth: THREE.MeshStandardMaterial; scale: number }> = {
   grunt: { cloth: new THREE.MeshStandardMaterial({ color: "#6b6f4a", roughness: 0.95 }), scale: 1 },
@@ -92,6 +99,61 @@ function Body({ tag, cloth, refs }: {
   );
 }
 
+function UndeadBody({ tag, cloth, refs }: {
+  tag: Tag;
+  cloth: THREE.Material;
+  refs: ReturnType<typeof useLimbs>;
+}) {
+  const P = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: [number, number, number], scale?: [number, number, number]) => (
+    <mesh
+      geometry={geo}
+      material={mat}
+      position={pos}
+      scale={scale ?? [1, 1, 1]}
+      castShadow
+      userData={tag}
+    />
+  );
+  return (
+    <>
+      {P(G.torso, cloth, [0, 1.3, 0])}
+      {P(G.head, zombieSkin, [0, 1.96, 0])}
+      {P(G.head, zombieSkinLight, [-0.08, 2.02, 0.095], [0.53, 0.35, 0.35])}
+      {P(G.limb, zombieSkin, [0, 1.68, 0])}
+      {P(G.eye, zombieSocket, [-0.085, 2.015, 0.175], [0.48, 0.54, 0.55])}
+      {P(G.eye, zombieSocket, [0.085, 2.015, 0.175], [0.48, 0.54, 0.55])}
+      {P(G.head, zombieEye, [-0.085, 2.015, 0.202], [0.14, 0.14, 0.08])}
+      {P(G.head, zombieEye, [0.085, 2.015, 0.202], [0.14, 0.14, 0.08])}
+      {P(G.head, zombieMouth, [0, 1.85, 0.184], [0.36, 0.24, 0.12])}
+      {P(G.limb, zombieBone, [-0.055, 1.82, 0.205], [0.3, 0.12, 0.18])}
+      {P(G.limb, zombieBone, [0.055, 1.82, 0.205], [0.3, 0.12, 0.18])}
+      {P(G.limb, zombieScar, [-0.16, 1.91, 0.172], [0.42, 0.11, 0.11])}
+      {P(G.limb, zombieScar, [0.13, 2.08, 0.17], [0.3, 0.08, 0.1])}
+      {P(G.belt, strap, [0, 0.98, 0])}
+      <group ref={refs.lArm} position={[-0.38, 1.6, 0]}>
+        {P(G.limb, cloth, [0, -0.32, 0])}
+        {P(G.head, zombieSkin, [0, -0.64, 0.01], [0.58, 0.58, 0.58])}
+      </group>
+      <group ref={refs.rArm} position={[0.38, 1.6, 0]}>
+        {P(G.limb, cloth, [0, -0.32, 0])}
+        {P(G.head, zombieSkin, [0, -0.64, 0.01], [0.58, 0.58, 0.58])}
+      </group>
+      <group ref={refs.lLeg} position={[-0.14, 0.95, 0]}>
+        {P(G.leg, strap, [0, -0.45, 0])}
+        {P(G.limb, zombieScar, [-0.04, -0.09, 0.09], [0.35, 0.12, 0.1])}
+      </group>
+      <group ref={refs.rLeg} position={[0.14, 0.95, 0]}>
+        {P(G.leg, strap, [0, -0.45, 0])}
+        {P(G.limb, zombieScar, [0.04, -0.3, 0.09], [0.34, 0.12, 0.1])}
+      </group>
+      {P(G.limb, zombieScar, [0.13, 1.35, 0.24], [0.55, 0.16, 0.1])}
+      {P(G.limb, zombieBone, [-0.15, 1.23, 0.25], [0.5, 0.1, 0.08])}
+      {P(G.limb, cloth, [-0.22, 1.05, 0.24], [0.55, 0.28, 0.12])}
+      {P(G.limb, cloth, [0.2, 1.14, 0.24], [0.4, 0.23, 0.12])}
+    </>
+  );
+}
+
 function useLimbs() {
   return {
     lLeg: useRef<THREE.Group>(null),
@@ -108,7 +170,7 @@ function swing(limbs: ReturnType<typeof useLimbs>, w: number) {
   if (limbs.rArm.current) limbs.rArm.current.rotation.x = w * 0.8;
 }
 
-export function EnemyMesh({ e }: { e: EnemyRuntime }) {
+export function EnemyMesh({ e, zombie = false }: { e: EnemyRuntime; zombie?: boolean }) {
   const root = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
   const limbs = useLimbs();
@@ -132,14 +194,26 @@ export function EnemyMesh({ e }: { e: EnemyRuntime }) {
     const w = e.moving ? Math.sin(t) * 0.6 : 0;
     swing(limbs, w);
     b.position.y = e.moving ? Math.abs(Math.cos(t)) * 0.05 : 0;
-    if (limbs.rArm.current && e.cd > 0 && e.cd > 0.8) limbs.rArm.current.rotation.x = -1.6;
+    if (zombie) {
+      b.rotation.x = -0.14 + Math.sin(t * 0.5) * 0.035;
+      if (limbs.lArm.current) limbs.lArm.current.rotation.x -= 0.3;
+      if (limbs.rArm.current) limbs.rArm.current.rotation.x -= 0.3;
+    } else if (limbs.rArm.current && e.cd > 0 && e.cd > 0.8) {
+      limbs.rArm.current.rotation.x = -1.6;
+    }
   });
 
   return (
     <group ref={root} scale={look.scale}>
       <group ref={body}>
-        <Body tag={{ enemyId: e.id }} cloth={look.cloth} refs={limbs} />
-        {e.tier !== "grunt" && <mesh geometry={G.visor} material={visorMat} position={[0, 1.98, 0.18]} userData={{ enemyId: e.id }} />}
+        {zombie ? (
+          <UndeadBody tag={{ enemyId: e.id }} cloth={look.cloth} refs={limbs} />
+        ) : (
+          <>
+            <Body tag={{ enemyId: e.id }} cloth={look.cloth} refs={limbs} />
+            {e.tier !== "grunt" && <mesh geometry={G.visor} material={visorMat} position={[0, 1.98, 0.18]} userData={{ enemyId: e.id }} />}
+          </>
+        )}
       </group>
     </group>
   );

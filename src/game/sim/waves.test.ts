@@ -4,8 +4,11 @@ import {
   enemyBehaviorForWave,
   enemyCountForWave,
   runCredits,
+  scaledUndergroundTier,
   scaledTier,
   tierMixForWave,
+  undergroundSpawnPlan,
+  undergroundZombieCount,
   waveCredits,
 } from "./waves";
 
@@ -61,6 +64,32 @@ describe("difficulty scaling", () => {
   });
   it("hard enemies have more health than easy ones", () => {
     expect(scaledTier("hard", "grunt").hp).toBeGreaterThan(scaledTier("easy", "grunt").hp);
+  });
+});
+
+describe("underground rooms", () => {
+  it("adds zombies as the player advances through rooms", () => {
+    expect(undergroundZombieCount("normal", 2)).toBeGreaterThan(
+      undergroundZombieCount("normal", 1),
+    );
+    expect(undergroundZombieCount("normal", 5)).toBeLessThanOrEqual(20);
+  });
+
+  it("creates deterministic zombie spawns inside the room", () => {
+    const first = undergroundSpawnPlan("normal", 4, 123);
+    expect(undergroundSpawnPlan("normal", 4, 123)).toEqual(first);
+    expect(first).toHaveLength(undergroundZombieCount("normal", 4));
+    expect(first.every(({ x, z }) => Math.hypot(x, z) <= 11.5)).toBe(true);
+    expect(first.some(({ tier }) => tier === "runner")).toBe(true);
+    expect(first.some(({ tier }) => tier === "brute")).toBe(true);
+  });
+
+  it("makes zombies tougher and faster in deeper rooms", () => {
+    const early = scaledUndergroundTier("normal", "grunt", 1);
+    const late = scaledUndergroundTier("normal", "grunt", 5);
+    expect(late.hp).toBeGreaterThan(early.hp);
+    expect(late.speed).toBeGreaterThan(early.speed);
+    expect(late.damage).toBeGreaterThan(early.damage);
   });
 });
 

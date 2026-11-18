@@ -64,38 +64,47 @@ export type Database = {
         Row: {
           created_at: string;
           credits: number;
+          deaths: number;
           display_name: string;
           dungeons_completed: number;
+          enemies_killed: number;
           equipped_hat: string | null;
           equipped_shirt: string | null;
           equipped_weapon: string;
           experience: number;
           id: string;
           level: number;
+          play_seconds: number;
         };
         Insert: {
           created_at?: string;
           credits?: number;
+          deaths?: number;
           display_name?: string;
           dungeons_completed?: number;
+          enemies_killed?: number;
           equipped_hat?: string | null;
           equipped_shirt?: string | null;
           equipped_weapon?: string;
           experience?: number;
           id: string;
           level?: number;
+          play_seconds?: number;
         };
         Update: {
           created_at?: string;
           credits?: number;
+          deaths?: number;
           display_name?: string;
           dungeons_completed?: number;
+          enemies_killed?: number;
           equipped_hat?: string | null;
           equipped_shirt?: string | null;
           equipped_weapon?: string;
           experience?: number;
           id?: string;
           level?: number;
+          play_seconds?: number;
         };
         Relationships: [];
       };
@@ -148,7 +157,32 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      record_player_session: {
+        Args: {
+          death_count: number;
+          kill_count: number;
+          played_seconds: number;
+        };
+        Returns: {
+          deaths: number;
+          enemies_killed: number;
+          play_seconds: number;
+        }[];
+      };
+      search_player_directory: {
+        Args: {
+          search_term: string;
+        };
+        Returns: {
+          deaths: number;
+          display_name: string;
+          dungeons_completed: number;
+          enemies_killed: number;
+          experience: number;
+          hours_played: number;
+          level: number;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;

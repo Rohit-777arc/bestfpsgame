@@ -9,6 +9,12 @@ export const DUNGEON_WAVES = 5;
 export const DUNGEON_CLEAR_CREDITS = 50;
 export const DUNGEON_CLEAR_EXPERIENCE = 100;
 
+export const ENEMY_EXPERIENCE = {
+  grunt: 30,
+  runner: 45,
+  brute: 75,
+} as const;
+
 export function experienceRequiredForLevel(level: number): number {
   return (
     EXPERIENCE_PER_LEVEL + (Math.max(1, Math.floor(level)) - 1) * EXPERIENCE_INCREASE_PER_LEVEL
@@ -24,8 +30,12 @@ export function totalExperience(progress: PlayerExperience): number {
   );
 }
 
+export function enemyExperience(tier: keyof typeof ENEMY_EXPERIENCE): number {
+  return ENEMY_EXPERIENCE[tier];
+}
+
 export function waveExperience(difficulty: "easy" | "normal" | "hard"): number {
-  return difficulty === "hard" ? 30 : difficulty === "normal" ? 20 : 10;
+  return difficulty === "hard" ? 30 : difficulty === "normal" ? 20 : 15;
 }
 
 export function addExperience(progress: PlayerExperience, amount: number): PlayerExperience {

@@ -9,6 +9,17 @@ import { useProgress } from "@/components/game/useProgress";
 import { buyCosmetic, setEquippedCosmetic } from "@/game/progress";
 import { COSMETICS, type CosmeticId, type CosmeticSlot } from "@/game/sim/cosmetics";
 import { experienceRequiredForLevel } from "@/game/sim/progression";
+import { searchPlayers } from "@/game/profile.functions";
+
+type PlayerSearchResult = {
+  display_name: string;
+  level: number;
+  experience: number;
+  dungeons_completed: number;
+  enemies_killed: number;
+  deaths: number;
+  hours_played: number;
+};
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -27,6 +38,9 @@ function ProfilePage() {
   const progress = useProgress();
   const [slot, setSlot] = useState<CosmeticSlot>("shirt");
   const [busy, setBusy] = useState<string | null>(null);
+  const [playerQuery, setPlayerQuery] = useState("");
+  const [players, setPlayers] = useState<PlayerSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
 
   async function purchase(id: CosmeticId) {
     setBusy(id);
@@ -52,6 +66,18 @@ function ProfilePage() {
     }
   }
 
+  async function search() {
+    if (playerQuery.trim().length < 2) return;
+    setSearching(true);
+    try {
+      setPlayers(await searchPlayers({ data: { query: playerQuery } }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not search players");
+    } finally {
+      setSearching(false);
+    }
+  }
+
   const equippedBySlot = {
     shirt: progress.equippedShirt,
     hat: progress.equippedHat,
@@ -64,7 +90,12 @@ function ProfilePage() {
         <div className="profile-customization-layout">
           <section className="profile-summary mso-panel">
             <div className="profile-operator-preview">
-              <CharacterPreview shirtId={progress.equippedShirt} hatId={progress.equippedHat} />
+              <CharacterPreview
+                shirtId={progress.equippedShirt}
+                hatId={progress.equippedHat}
+                weaponId={progress.equipped}
+                rotatable
+              />
             </div>
             <div className="hub-info-kicker mt-6">ACTIVE OPERATOR</div>
             <h2 className="mso-display mt-2 text-4xl">{progress.name}</h2>
@@ -86,6 +117,18 @@ function ProfilePage() {
               <div>
                 <span>IN-GAME COINS</span>
                 <strong>{progress.credits} ¢</strong>
+              </div>
+              <div>
+                <span>HOURS PLAYED</span>
+                <strong>{(progress.playSeconds / 3600).toFixed(1)} h</strong>
+              </div>
+              <div>
+                <span>ENEMIES KILLED</span>
+                <strong>{progress.enemiesKilled}</strong>
+              </div>
+              <div>
+                <span>DEATHS</span>
+                <strong>{progress.deaths}</strong>
               </div>
             </div>
             <ExperienceBar level={progress.level} experience={progress.experience} />
@@ -191,6 +234,59 @@ function ProfilePage() {
             </div>
           </section>
         </div>
+        <section className="player-directory mso-panel">
+          <div className="hub-info-kicker">COMMUNITY</div>
+          <h2 className="mso-display mt-1 text-3xl">FIND A PLAYER</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Search signed-in players by display name. Public results show game stats only.
+          </p>
+          {progress.kind === "account" ? (
+            <>
+              <form
+                className="mt-5 flex flex-wrap gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void search();
+                }}
+              >
+                <input
+                  aria-label="Search players by display name"
+                  className="player-search-input"
+                  placeholder="Enter at least 2 characters"
+                  value={playerQuery}
+                  maxLength={32}
+                  minLength={2}
+                  onChange={(event) => setPlayerQuery(event.target.value)}
+                />
+                <button className="mso-btn" type="submit" disabled={searching || playerQuery.trim().length < 2}>
+                  {searching ? "SEARCHING…" : "SEARCH"}
+                </button>
+              </form>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {players.map((player, index) => (
+                  <article key={`${player.display_name}-${index}`} className="player-result mso-card">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="mso-display text-xl">{player.display_name}</h3>
+                      <span className="mso-chip">LEVEL {player.level}</span>
+                    </div>
+                    <div className="player-result-stats">
+                      <span>{player.experience} / {experienceRequiredForLevel(player.level)} EXP</span>
+                      <span>{player.dungeons_completed} dungeons</span>
+                      <span>{player.hours_played.toFixed(1)} hours</span>
+                      <span>{player.enemies_killed} kills</span>
+                      <span>{player.deaths} deaths</span>
+                    </div>
+                  </article>
+                ))}
+                {players.length === 0 && !searching && playerQuery.trim().length >= 2 && (
+                  <p className="text-sm text-muted-foreground">No players found. Try another name.</p>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="mt-5 text-sm text-muted-foreground">Sign in to find other players.</p>
+          )}
+        </section>
       </PageShell>
     </>
   );

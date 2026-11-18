@@ -8,18 +8,25 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { MAPS, type MapId } from "@/game/sim/maps";
 import { ARENA, CRATES } from "@/game/sim/arena";
 import { WEAPONS, shotInterval, type WeaponId } from "@/game/sim/weapons";
-import { enemyBehaviorForWave, scaledTier, spawnPlan, type Difficulty } from "@/game/sim/waves";
-import { Scene } from "./Scene";
+import { enemyBehaviorForWave, scaledTier, scaledUndergroundTier, spawnPlan, undergroundSpawnPlan, UNDERGROUND_ROOM_HALF_SIZE, type Difficulty, type DungeonVariant } from "@/game/sim/waves";
+import { Scene, UndergroundScene } from "./Scene";
 import { EnemyMesh, RemoteMesh, type EnemyRuntime, type RemoteRuntime } from "./Actors";
 import { TouchControls, type TouchInput } from "./TouchControls";
 import { Button } from "@/components/ui/button";
 import { CharacterPreview } from "@/components/game/CharacterPreview";
 import { ExperienceBar } from "@/components/game/ExperienceBar";
-import { DUNGEON_WAVES } from "@/game/sim/progression";
+import { DUNGEON_WAVES, enemyExperience } from "@/game/sim/progression";
+import { playExperiencePickup, playLevelUp } from "@/game/audio";
 import { isCoordinator, playerId, sendEvent, sendState, type NetBus, type NetEvent, type RosterEntry } from "@/game/net";
 
 export type ArenaMode = "dungeon" | "train" | "coop" | "duel";
 type ControlMode = "pc" | "mobile";
+
+export interface ArenaSessionStats {
+  seconds: number;
+  kills: number;
+  deaths: number;
+}
 
 export interface NetLink {
   channelRef: MutableRefObject<RealtimeChannel | null>;
@@ -29,6 +36,7 @@ export interface NetLink {
 
 export interface ArenaProps {
   mode: ArenaMode;
+  dungeonVariant?: DungeonVariant;
   map: MapId;
   difficulty: Difficulty;
   trainLevel?: number; // 1..5
@@ -41,8 +49,9 @@ export interface ArenaProps {
   equippedHat?: string | null;
   net?: NetLink;
   onWaveCleared?: (wave: number) => Promise<{ awarded: number; experience: number; levelsGained?: number; level?: number }> | { awarded: number; experience: number; levelsGained?: number; level?: number } | undefined;
+  onExperienceCollected?: (amount: number) => Promise<{ levelsGained: number; level: number }>;
   onRestart?: () => void;
-  onExit: () => void;
+  onExit: (stats: ArenaSessionStats) => void | Promise<void>;
 }
 
 const EYE = 1.7;
@@ -126,10 +135,12 @@ function World(
     controlMode: MutableRefObject<ControlMode | null>;
     touchInput: MutableRefObject<TouchInput>;
     reloadRef: MutableRefObject<() => void>;
+    statsRef: MutableRefObject<ArenaSessionStats>;
     paused: boolean;
   },
 ) {
   const { mode, difficulty, net, api } = props;
+  const underground = mode === "dungeon" && props.dungeonVariant === "underground";
   const weapon = WEAPONS[props.weapon];
   const { camera, scene, gl } = useThree();
   const cam = camera as THREE.PerspectiveCamera;
@@ -158,6 +169,13 @@ function World(
   // enemies
   const enemies = useRef<EnemyRuntime[]>([]);
   const [enemyKeys, setEnemyKeys] = useState<string[]>([]);
+  const experienceOrbs = useRef<
+    { id: number; position: THREE.Vector3; value: number; phase: number; collecting: boolean }[]
+  >([]);
+  const collectingExperience = useRef(false);
+  const [experienceOrbKeys, setExperienceOrbKeys] = useState<number[]>([]);
+  const experienceOrbMeshes = useRef(new Map<number, THREE.Mesh>());
+  const nextExperienceOrbId = useRef(0);
   const wave = useRef(0);
   const waveSeed = useRef(0);
   const nextWaveAt = useRef(-1);
@@ -221,7 +239,9 @@ function World(
 
   const makeEnemy = useCallback(
     (id: number, tier: EnemyRuntime["tier"], x: number, z: number): EnemyRuntime => {
-      const s = scaledTier(difficulty, tier);
+      const s = underground
+        ? scaledUndergroundTier(difficulty, tier, wave.current)
+        : scaledTier(difficulty, tier);
       const trainSpeed = 0.8 + (props.trainLevel ?? 1) * 0.9;
       const behavior = enemyBehaviorForWave(mode === "coop" || mode === "dungeon" ? wave.current : 1);
       return {
@@ -248,28 +268,46 @@ function World(
         goalZ: (Math.random() - 0.5) * ARENA * 1.6,
       };
     },
-    [difficulty, mode, props.trainLevel],
+    [difficulty, mode, underground, props.trainLevel],
   );
 
   const syncEnemyKeys = () => setEnemyKeys(enemies.current.map((e) => `${wave.current}:${e.id}`));
+
+  function dropExperienceOrb(enemy: EnemyRuntime) {
+    if (mode !== "dungeon" && mode !== "coop") return;
+    const id = nextExperienceOrbId.current++;
+    experienceOrbs.current.push({
+      id,
+      position: new THREE.Vector3(enemy.x, 0.65, enemy.z),
+      value: enemyExperience(enemy.tier),
+      phase: Math.random() * Math.PI * 2,
+      collecting: false,
+    });
+    setExperienceOrbKeys(experienceOrbs.current.map((orb) => orb.id));
+  }
 
   const startWave = useCallback(
     (n: number, seed: number) => {
       wave.current = n;
       waveSeed.current = seed;
       nextWaveAt.current = -1;
-      enemies.current = spawnPlan(difficulty, n, seed).map((p) => makeEnemy(p.id, p.tier, p.x, p.z));
+      const plan = underground
+        ? undergroundSpawnPlan(difficulty, n, seed)
+        : spawnPlan(difficulty, n, seed);
+      enemies.current = plan.map((p) => makeEnemy(p.id, p.tier, p.x, p.z));
       syncEnemyKeys();
       api.patch({
         wave: n,
         enemiesLeft: enemies.current.length,
-        banner: `WAVE ${n}`,
-        sub: `${enemies.current.length} enemies incoming`,
+        banner: `${underground ? "ROOM" : "WAVE"} ${n}`,
+        sub: underground
+          ? `${enemies.current.length} zombies in the chamber`
+          : `${enemies.current.length} enemies incoming`,
       });
       setTimeout(() => api.patch({ banner: null, sub: null }), 2200);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, difficulty, makeEnemy],
+    [api, difficulty, makeEnemy, mode, underground],
   );
 
   const startTraining = useCallback(() => {
@@ -289,10 +327,14 @@ function World(
     kills.current = 0;
     shots.current = 0;
     hits.current = 0;
+    props.statsRef.current = { seconds: 0, kills: 0, deaths: 0 };
     clearedWave.current = 0;
     runCredits.current = 0;
     runExperience.current = 0;
     runRewardSaveFailed.current = false;
+    experienceOrbs.current = [];
+    experienceOrbMeshes.current.clear();
+    setExperienceOrbKeys([]);
     timeLeft.current = TRAIN_TIME;
     duelScore.current = {};
     respawn();
@@ -382,6 +424,7 @@ function World(
         if (en && en.alive) {
           en.alive = false;
           en.hp = 0;
+          dropExperienceOrb(en);
           api.feed(`${e.name} ▸ ${en.tier.toUpperCase()}`);
           api.patch({ enemiesLeft: enemies.current.filter((x) => x.alive).length });
         }
@@ -391,6 +434,7 @@ function World(
         api.patch({ hp: hp.current, hurt: Date.now() });
         if (hp.current <= 0) {
           dead.current = true;
+          props.statsRef.current.deaths++;
           respawnAt.current = clock.current + 3;
           duelScore.current = {
             ...duelScore.current,
@@ -566,8 +610,10 @@ function World(
   function killEnemy(en: EnemyRuntime, mine: boolean) {
     en.alive = false;
     en.hp = 0;
+    dropExperienceOrb(en);
     if (mine) {
       kills.current++;
+      props.statsRef.current.kills++;
       api.feed(`${props.playerName} ▸ ${mode === "train" ? "DUMMY" : en.tier.toUpperCase()}`);
       if (mode === "coop") {
         sendEvent(net?.channelRef.current ?? null, {
@@ -688,6 +734,7 @@ function World(
     }
     runCredits.current += reward.awarded;
     runExperience.current += reward.experience;
+    if (reward.levelsGained > 0) playLevelUp();
     if (finalDungeonWave) {
       api.patch((h) => ({
         banner: null,
@@ -696,7 +743,7 @@ function World(
         over: {
           title: "DUNGEON COMPLETE",
           lines: [
-            `All ${DUNGEON_WAVES} waves defeated`,
+            `All ${DUNGEON_WAVES} ${props.dungeonVariant === "underground" ? "rooms" : "waves"} cleared`,
             `Coins earned: ${runCredits.current}`,
             `EXP earned: ${runExperience.current}`,
             ...(runRewardSaveFailed.current ? ["Reward save failed; totals may be incomplete"] : []),
@@ -721,6 +768,7 @@ function World(
     touchMode.current = props.controlMode.current === "mobile";
     const k = keys.current;
     const live = !props.paused && !over.current;
+    if (live) props.statsRef.current.seconds += dt;
 
     if (touchMode.current) {
       look.current.yaw -= touch.current.lookDX * SENS * 1.45;
@@ -759,7 +807,13 @@ function World(
       }
     }
     const feetY = camera.position.y - EYE;
-    const under = CRATES.find((c) => Math.abs(camera.position.x - c.x) < c.s / 2 + 0.3 && Math.abs(camera.position.z - c.z) < c.s / 2 + 0.3);
+    const under =
+      !underground &&
+      CRATES.find(
+        (c) =>
+          Math.abs(camera.position.x - c.x) < c.s / 2 + 0.3 &&
+          Math.abs(camera.position.z - c.z) < c.s / 2 + 0.3,
+      );
     const floor = under && feetY >= under.s - 0.5 ? under.s : 0;
     const grounded = feetY <= floor + 0.001;
     if (live && !dead.current && (k.Space || (touchMode.current && touch.current.jump)) && grounded) vy.current = JUMP_V;
@@ -774,10 +828,11 @@ function World(
       const feet = camera.position.y - EYE;
       const nx = camera.position.x + move.x;
       const nz = camera.position.z + move.z;
-      if (!blocked(nx, camera.position.z, feet)) camera.position.x = nx;
-      if (!blocked(camera.position.x, nz, feet)) camera.position.z = nz;
-      camera.position.x = THREE.MathUtils.clamp(camera.position.x, -ARENA + 0.5, ARENA - 0.5);
-      camera.position.z = THREE.MathUtils.clamp(camera.position.z, -ARENA + 0.5, ARENA - 0.5);
+      if (underground || !blocked(nx, camera.position.z, feet)) camera.position.x = nx;
+      if (underground || !blocked(camera.position.x, nz, feet)) camera.position.z = nz;
+      const arenaLimit = underground ? UNDERGROUND_ROOM_HALF_SIZE - 0.7 : ARENA - 0.5;
+      camera.position.x = THREE.MathUtils.clamp(camera.position.x, -arenaLimit, arenaLimit);
+      camera.position.z = THREE.MathUtils.clamp(camera.position.z, -arenaLimit, arenaLimit);
     }
 
     // weapon
@@ -811,6 +866,43 @@ function World(
       }
     }
 
+    if (live && !dead.current && props.onExperienceCollected && !collectingExperience.current) {
+      for (const orb of experienceOrbs.current) {
+        const mesh = experienceOrbMeshes.current.get(orb.id);
+        if (!mesh || orb.collecting) continue;
+        mesh.position.y = orb.position.y + Math.sin(clock.current * 4 + orb.phase) * 0.12;
+        mesh.rotation.y += dt * 2.4;
+        if (mesh.position.distanceTo(camera.position) > 1.65) continue;
+
+        orb.collecting = true;
+        collectingExperience.current = true;
+        void props
+          .onExperienceCollected(orb.value)
+          .then(({ levelsGained, level }) => {
+            playExperiencePickup();
+            runExperience.current += orb.value;
+            if (levelsGained > 0) {
+              playLevelUp();
+              api.patch({ banner: "LEVEL UP!", sub: `LEVEL ${level} · +${orb.value} EXP` });
+            } else {
+              api.patch({ banner: `+${orb.value} EXP`, sub: "EXPERIENCE ORB" });
+            }
+            setTimeout(() => api.patch({ banner: null, sub: null }), 1800);
+            experienceOrbs.current = experienceOrbs.current.filter((item) => item.id !== orb.id);
+            experienceOrbMeshes.current.delete(orb.id);
+            setExperienceOrbKeys(experienceOrbs.current.map((item) => item.id));
+          })
+          .catch((error: unknown) => {
+            orb.collecting = false;
+            api.feed(error instanceof Error ? `XP SAVE FAILED: ${error.message}` : "XP SAVE FAILED");
+          })
+          .finally(() => {
+            collectingExperience.current = false;
+          });
+        break;
+      }
+    }
+
     // enemies AI
     const me = camera.position;
     const targets: { x: number; z: number; local: boolean }[] = [];
@@ -841,7 +933,7 @@ function World(
       const dist = Math.hypot(dx, dz);
       e.cd -= dt;
       e.attackCd -= dt;
-      if ((mode === "dungeon" || mode === "coop") && !dead.current) {
+      if ((mode === "dungeon" || mode === "coop") && !underground && !dead.current) {
         const shotDx = me.x - e.x;
         const shotDz = me.z - e.z;
         const shotDistance = Math.hypot(shotDx, shotDz);
@@ -876,13 +968,14 @@ function World(
             api.patch({ hp: hp.current, hurt: Date.now() });
             if (hp.current <= 0) {
               dead.current = true;
+              props.statsRef.current.deaths++;
               if (mode === "dungeon") {
                 over.current = true;
                 document.exitPointerLock?.();
                 api.patch((h) => ({
                   over: {
                     title: "YOU DIED",
-                    lines: [`Reached wave ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`],
+                    lines: [`Reached ${props.dungeonVariant === "underground" ? "room" : "wave"} ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`],
                   },
                 }));
               } else {
@@ -902,13 +995,14 @@ function World(
           api.patch({ hp: hp.current, hurt: Date.now() });
           if (hp.current <= 0) {
             dead.current = true;
+            props.statsRef.current.deaths++;
             if (mode === "dungeon") {
               over.current = true;
               document.exitPointerLock?.();
               api.patch((h) => ({
                 over: {
                   title: "YOU DIED",
-                  lines: [`Reached wave ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`],
+                  lines: [`Reached ${props.dungeonVariant === "underground" ? "room" : "wave"} ${wave.current}`, `${kills.current} enemies down`, `+${h.earned} credits this run`],
                 },
               }));
             } else {
@@ -926,7 +1020,7 @@ function World(
       }
       let moveX = dx;
       let moveZ = dz;
-      if (chasing && (mode === "dungeon" || mode === "coop") && dist > 0.01) {
+      if (chasing && (mode === "dungeon" || mode === "coop") && !underground && dist > 0.01) {
         const preferred = e.tier === "brute" ? 8 : e.tier === "runner" ? 12 : 10;
         const radial = THREE.MathUtils.clamp((dist - preferred) / Math.max(dist, 1), -0.7, 1);
         const side = Math.sin(clock.current * 0.9 + e.phase) * e.strafe;
@@ -937,8 +1031,8 @@ function World(
       const step = e.speed * dt;
       const nx = e.x + (moveX / moveLength) * step;
       const nz = e.z + (moveZ / moveLength) * step;
-      const hitX = blocked(nx, e.z, 0, 0.45);
-      const hitZ = blocked(e.x, nz, 0, 0.45);
+      const hitX = !underground && blocked(nx, e.z, 0, 0.45);
+      const hitZ = !underground && blocked(e.x, nz, 0, 0.45);
       if (!hitX) e.x = nx;
       if (!hitZ) e.z = nz;
       if (hitX && hitZ) {
@@ -959,22 +1053,32 @@ function World(
     if ((mode === "dungeon" || mode === "coop") && !over.current && wave.current > 0 && aliveCount === 0 && enemies.current.length) {
       if (nextWaveAt.current < 0) {
         nextWaveAt.current = clock.current + INTERMISSION;
-        void waveDone(wave.current);
-      } else if (clock.current >= nextWaveAt.current) {
-        const coordinator = mode === "dungeon" || isCoordinator(rosterRef.current);
-        if (coordinator) {
-          const seed = Math.floor(Math.random() * 1e9);
-          const n = wave.current + 1;
-          if (mode === "coop")
-            sendEvent(net?.channelRef.current ?? null, {
-              type: "wave",
-              from: playerId(),
-              wave: n,
-              seed,
-            });
-          startWave(n, seed);
+        const finalDungeonWave = mode === "dungeon" && wave.current >= DUNGEON_WAVES;
+        if (finalDungeonWave) {
+          api.patch({ banner: "WAVE CLEARED", sub: "Collect the remaining EXP orbs!" });
         } else {
-          nextWaveAt.current = clock.current + 2; // wait for the coordinator's wave event
+          void waveDone(wave.current);
+        }
+      } else if (clock.current >= nextWaveAt.current) {
+        if (mode === "dungeon" && wave.current >= DUNGEON_WAVES) {
+          void waveDone(wave.current);
+          nextWaveAt.current = -1;
+        } else {
+          const coordinator = mode === "dungeon" || isCoordinator(rosterRef.current);
+          if (coordinator) {
+            const seed = Math.floor(Math.random() * 1e9);
+            const n = wave.current + 1;
+            if (mode === "coop")
+              sendEvent(net?.channelRef.current ?? null, {
+                type: "wave",
+                from: playerId(),
+                wave: n,
+                seed,
+              });
+            startWave(n, seed);
+          } else {
+            nextWaveAt.current = clock.current + 2; // wait for the coordinator's wave event
+          }
         }
       }
     }
@@ -1049,12 +1153,26 @@ function World(
 
   return (
     <>
-      <Scene map={MAPS[props.map]} />
+      {underground ? <UndergroundScene room={wave.current} /> : <Scene map={MAPS[props.map]} />}
       {enemyKeys.map((key) => {
         const id = Number(key.split(":")[1]);
         const e = enemies.current.find((x) => x.id === id);
-        return e ? <EnemyMesh key={key} e={e} /> : null;
+        return e ? <EnemyMesh key={key} e={e} zombie={underground} /> : null;
       })}
+      {experienceOrbKeys.map((id) => (
+        <mesh
+          key={`xp-${id}`}
+          ref={(mesh) => {
+            if (mesh) experienceOrbMeshes.current.set(id, mesh);
+            else experienceOrbMeshes.current.delete(id);
+          }}
+          position={experienceOrbs.current.find((orb) => orb.id === id)?.position ?? [0, -100, 0]}
+        >
+          <icosahedronGeometry args={[0.16, 1]} />
+          <meshStandardMaterial color="#80ff20" emissive="#80ff20" emissiveIntensity={2.2} />
+          <pointLight color="#80ff20" intensity={0.55} distance={2.5} />
+        </mesh>
+      ))}
       {remoteIds.map((id) => {
         const r = remotes.current.get(id);
         return r ? <RemoteMesh key={id} r={r} foe={mode === "duel"} /> : null;
@@ -1100,6 +1218,8 @@ export function Arena(props: ArenaProps) {
   const controlModeRef = useRef<ControlMode | null>(null);
   const [controlMode, setControlMode] = useState<ControlMode | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
+  const statsRef = useRef<ArenaSessionStats>({ seconds: 0, kills: 0, deaths: 0 });
+  const exiting = useRef(false);
   const reloadRef = useRef<() => void>(() => {});
   const touchInput = useRef<TouchInput>({
     moveX: 0,
@@ -1131,11 +1251,18 @@ export function Arena(props: ArenaProps) {
 
   const restart = () => {
     props.onRestart?.();
+    exiting.current = false;
     if (props.net && (props.mode === "duel" || props.mode === "coop")) {
       sendEvent(props.net.channelRef.current, { type: "restart", from: me });
     }
     startRef.current();
     resumeRef.current();
+  };
+
+  const leaveArena = async () => {
+    if (exiting.current) return;
+    exiting.current = true;
+    await props.onExit({ ...statsRef.current });
   };
 
   const chooseControlMode = (mode: ControlMode) => {
@@ -1158,12 +1285,12 @@ export function Arena(props: ArenaProps) {
         shadows
         gl={{
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: map.night ? 1.25 : 1.05,
+          toneMappingExposure: props.dungeonVariant === "underground" ? 0.9 : map.night ? 1.25 : 1.05,
         }}
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}
       >
-        <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} controlMode={controlModeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} />
+        <World {...props} api={api} startRef={startRef} resumeRef={resumeRef} controlMode={controlModeRef} paused={paused} touchInput={touchInput} reloadRef={reloadRef} statsRef={statsRef} />
       </Canvas>
 
       <TouchControls input={touchInput.current} scopedWeapon={weapon.scope} active={controlMode === "mobile"} onReload={() => reloadRef.current()} />
@@ -1183,18 +1310,18 @@ export function Arena(props: ArenaProps) {
           <div className="flex flex-col gap-2">
             <div className="fps-mode-chip">
               <span className="fps-status-dot" />
-              <span>{props.mode === "train" ? "TRAINING" : props.mode === "duel" ? "1V1 DUEL" : props.mode === "coop" ? "CO-OP" : "DUNGEON"}</span>
+              <span>{props.mode === "train" ? "TRAINING" : props.mode === "duel" ? "1V1 DUEL" : props.mode === "coop" ? "CO-OP" : props.dungeonVariant === "underground" ? "UNDERGROUND" : "GUNFIGHT"}</span>
               <span className="fps-chip-divider" />
-              <span className="fps-map-name">{map.name}</span>
+              <span className="fps-map-name">{props.dungeonVariant === "underground" ? "THE LOWER LEVELS" : map.name}</span>
             </div>
             {(props.mode === "dungeon" || props.mode === "coop") && (
               <div className="fps-wave-chip">
-                <span className="fps-micro-label">WAVE</span>
+                <span className="fps-micro-label">{props.dungeonVariant === "underground" ? "ROOM" : "WAVE"}</span>
                 <span className="mso-num">{String(hud.wave).padStart(2, "0")}</span>
                 <span className="fps-wave-divider" />
                 <span className="fps-enemies">
                   <i />
-                  {hud.enemiesLeft} HOSTILES
+                  {hud.enemiesLeft} {props.dungeonVariant === "underground" ? "ZOMBIES" : "HOSTILES"}
                 </span>
               </div>
             )}
@@ -1365,7 +1492,7 @@ export function Arena(props: ArenaProps) {
                 {hasStarted ? "FIGHT" : "START"}
               </Button>
               {hasStarted && (
-                <Button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>
+                <Button type="button" className="mso-btn mso-btn-ghost" onClick={() => void leaveArena()}>
                   Leave
                 </Button>
               )}
@@ -1388,7 +1515,7 @@ export function Arena(props: ArenaProps) {
                   PLAY AGAIN
                 </button>
               )}
-              <button type="button" className="mso-btn mso-btn-ghost" onClick={props.onExit}>
+              <button type="button" className="mso-btn mso-btn-ghost" onClick={() => void leaveArena()}>
                 BACK TO LOBBY
               </button>
             </div>

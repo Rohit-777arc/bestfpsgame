@@ -1,20 +1,52 @@
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
 import { useId } from "react";
+import * as THREE from "three";
 import { getCosmetic } from "@/game/sim/cosmetics";
+import { WEAPONS, type WeaponId } from "@/game/sim/weapons";
 
 export function CharacterPreview({
   shirtId,
   hatId,
   compact = false,
+  rotatable = false,
+  weaponId = "scout-pistol",
 }: {
   shirtId: string | null;
   hatId: string | null;
   compact?: boolean;
+  rotatable?: boolean;
+  weaponId?: WeaponId;
 }) {
   const previewId = useId();
   const shirt = getCosmetic(shirtId);
   const hat = getCosmetic(hatId);
   const shirtColor = shirt?.color ?? "#53677a";
   const hatColor = hat?.color ?? "#394554";
+
+  if (rotatable) {
+    return (
+      <div
+        className="character-preview character-preview-3d"
+        role="img"
+        aria-label={`Rotatable blocky character wearing ${shirt?.name ?? "standard uniform"} and holding ${WEAPONS[weaponId].name}`}
+      >
+        <Canvas camera={{ position: [3.3, 2.2, 4], fov: 34 }} dpr={[1, 1.5]}>
+          <color attach="background" args={["#17242b"]} />
+          <ambientLight intensity={1.5} />
+          <directionalLight position={[3, 6, 4]} intensity={3} castShadow />
+          <pointLight position={[-3, 2, -3]} intensity={18} color="#80ff20" />
+          <BlockyOperator shirtColor={shirtColor} hatColor={hatColor} hatStyle={hat?.style} shirtStyle={shirt?.style} weaponId={weaponId} />
+          <mesh rotation-x={-Math.PI / 2} position-y={-0.03} receiveShadow>
+            <circleGeometry args={[1.25, 48]} />
+            <meshStandardMaterial color="#263940" roughness={0.85} />
+          </mesh>
+          <OrbitControls enablePan={false} minDistance={3.5} maxDistance={6} minPolarAngle={0.7} maxPolarAngle={1.8} />
+        </Canvas>
+        <span className="character-preview-hint">DRAG TO ROTATE</span>
+      </div>
+    );
+  }
 
   return (
     <svg
@@ -89,5 +121,120 @@ export function CharacterPreview({
       )}
       <path d="m48 173 17-11m67 11-17-11" stroke="oklch(1 0 0 / .2)" strokeWidth="2" />
     </svg>
+  );
+}
+
+function BlockyOperator({
+  shirtColor,
+  hatColor,
+  hatStyle,
+  shirtStyle,
+  weaponId,
+}: {
+  shirtColor: string;
+  hatColor: string;
+  hatStyle?: string | undefined;
+  shirtStyle?: string | undefined;
+  weaponId: WeaponId;
+}) {
+  const weapon = WEAPONS[weaponId];
+  const skin = "#c8a77a";
+  const dark = new THREE.Color(shirtColor).multiplyScalar(0.55).getStyle();
+  return (
+    <group position-y={0.03}>
+      <mesh position={[0, 0.48, 0]} castShadow>
+        <boxGeometry args={[0.38, 0.92, 0.42]} />
+        <meshStandardMaterial color="#27333a" />
+      </mesh>
+      <mesh position={[0, 1.22, 0]} castShadow>
+        <boxGeometry args={[0.72, 0.78, 0.42]} />
+        <meshStandardMaterial color={shirtColor} roughness={0.78} />
+      </mesh>
+      {shirtStyle === "armor" && (
+        <>
+          <mesh position={[0, 1.28, 0.22]}>
+            <boxGeometry args={[0.38, 0.38, 0.045]} />
+            <meshStandardMaterial color="#b4c2c9" metalness={0.6} roughness={0.36} />
+          </mesh>
+          <mesh position={[0, 1.27, 0.25]}>
+            <boxGeometry args={[0.12, 0.14, 0.06]} />
+            <meshStandardMaterial color="#f0c255" emissive="#a66b08" emissiveIntensity={0.3} />
+          </mesh>
+        </>
+      )}
+      {shirtStyle === "cloak" && (
+        <mesh position={[0, 1.12, -0.24]}>
+          <boxGeometry args={[0.74, 0.95, 0.12]} />
+          <meshStandardMaterial color={dark} />
+        </mesh>
+      )}
+      {shirtStyle === "champion" && (
+        <mesh position={[0, 1.26, 0.23]}>
+          <boxGeometry args={[0.15, 0.2, 0.04]} />
+          <meshStandardMaterial color="#fff0a0" metalness={0.7} />
+        </mesh>
+      )}
+      <mesh position={[0, 1.88, 0]} castShadow>
+        <boxGeometry args={[0.58, 0.58, 0.54]} />
+        <meshStandardMaterial color={skin} roughness={0.9} />
+      </mesh>
+      <mesh position={[0, 2.12, 0]}>
+        <boxGeometry args={[0.6, 0.16, 0.56]} />
+        <meshStandardMaterial color="#382c2a" />
+      </mesh>
+      <mesh position={[0, 1.9, 0.276]}>
+        <boxGeometry args={[0.34, 0.08, 0.025]} />
+        <meshStandardMaterial color="#dce8e7" emissive="#657f7d" emissiveIntensity={0.25} />
+      </mesh>
+      {hatStyle === "helmet" && (
+        <mesh position={[0, 2.2, 0]}>
+          <boxGeometry args={[0.72, 0.2, 0.68]} />
+          <meshStandardMaterial color={hatColor} metalness={0.3} roughness={0.55} />
+        </mesh>
+      )}
+      {hatStyle === "cap" && (
+        <mesh position={[0, 2.23, 0.05]}>
+          <boxGeometry args={[0.64, 0.14, 0.62]} />
+          <meshStandardMaterial color={hatColor} />
+        </mesh>
+      )}
+      {([-1, 1] as const).map((side) => (
+        <group key={side}>
+          <mesh position={[side * 0.45, 1.23, 0]} castShadow>
+            <boxGeometry args={[0.2, 0.7, 0.22]} />
+            <meshStandardMaterial color={shirtColor} />
+          </mesh>
+          <mesh position={[side * 0.45, 0.86, 0]} castShadow>
+            <boxGeometry args={[0.2, 0.14, 0.22]} />
+            <meshStandardMaterial color={skin} />
+          </mesh>
+          <mesh position={[side * 0.2, 0.42, 0]} castShadow>
+            <boxGeometry args={[0.32, 0.78, 0.34]} />
+            <meshStandardMaterial color="#34383b" />
+          </mesh>
+        </group>
+      ))}
+      <group position={[0.55, 1.03, 0.32]} rotation-x={-0.12}>
+        <mesh castShadow>
+          <boxGeometry args={[0.16, 0.16, 0.52]} />
+          <meshStandardMaterial color="#343a40" metalness={0.65} roughness={0.4} />
+        </mesh>
+        <mesh position={[0, 0.015, 0.31]}>
+          <boxGeometry args={[0.055, 0.055, 0.25]} />
+          <meshStandardMaterial color="#17191b" metalness={0.8} roughness={0.28} />
+        </mesh>
+        <mesh position={[0, -0.14, -0.04]} rotation-x={0.2}>
+          <boxGeometry args={[0.12, 0.22, 0.14]} />
+          <meshStandardMaterial color="#66462d" />
+        </mesh>
+        <mesh position={[0, 0.12, -0.08]}>
+          <boxGeometry args={[0.08, 0.09, 0.16]} />
+          <meshStandardMaterial
+            color={weapon.id === "riot-shotgun" ? "#b98246" : "#59646b"}
+            metalness={0.25}
+          />
+        </mesh>
+      </group>
+    </group>
   );
 }

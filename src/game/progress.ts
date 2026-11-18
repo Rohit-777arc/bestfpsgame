@@ -7,7 +7,7 @@ import { waveCredits, type Difficulty } from "./sim/waves";
 import type { MapId } from "./sim/maps";
 import { COSMETICS, isCosmeticId, type CosmeticId, type CosmeticSlot } from "./sim/cosmetics";
 import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, waveExperience } from "./sim/progression";
-import { awardWaveCredits, equipCosmeticItem, equipWeapon, getProfile, importGuestProgress, purchaseCosmetic, purchaseWeapon, renamePlayer } from "./profile.functions";
+import { awardWaveCredits, collectExperience as collectExperienceForAccount, equipCosmeticItem, equipWeapon, getProfile, importGuestProgress, purchaseCosmetic, purchaseWeapon, recordPlayerSession, renamePlayer } from "./profile.functions";
 
 const STORE_KEY = "mso-progress-v1";
 const IMPORT_KEY = "mso-imported-v1";
@@ -19,6 +19,9 @@ export interface Progress {
   level: number;
   experience: number;
   dungeonsCompleted: number;
+  playSeconds: number;
+  enemiesKilled: number;
+  deaths: number;
   weapons: WeaponId[];
   equipped: WeaponId;
   cosmetics: CosmeticId[];
@@ -36,6 +39,9 @@ let state: Progress = {
   level: 1,
   experience: 0,
   dungeonsCompleted: 0,
+  playSeconds: 0,
+  enemiesKilled: 0,
+  deaths: 0,
   weapons: [STARTER_WEAPON],
   equipped: STARTER_WEAPON,
   cosmetics: [],
@@ -72,6 +78,9 @@ function loadGuest(): Progress {
         credits: Math.max(0, Number(p.credits) || 0),
         ...xp,
         dungeonsCompleted: Math.max(0, Math.floor(Number(p.dungeonsCompleted) || 0)),
+        playSeconds: Math.max(0, Math.floor(Number(p.playSeconds) || 0)),
+        enemiesKilled: Math.max(0, Math.floor(Number(p.enemiesKilled) || 0)),
+        deaths: Math.max(0, Math.floor(Number(p.deaths) || 0)),
         weapons: [...new Set(weapons)],
         equipped: isWeaponId(String(p.equipped)) ? (p.equipped as WeaponId) : STARTER_WEAPON,
         cosmetics: [...new Set((p.cosmetics ?? []).filter(isCosmeticId))],
@@ -89,6 +98,9 @@ function loadGuest(): Progress {
     level: 1,
     experience: 0,
     dungeonsCompleted: 0,
+    playSeconds: 0,
+    enemiesKilled: 0,
+    deaths: 0,
     weapons: [STARTER_WEAPON],
     equipped: STARTER_WEAPON,
     cosmetics: [],
@@ -108,6 +120,9 @@ function saveGuest(p: Progress) {
       level: p.level,
       experience: p.experience,
       dungeonsCompleted: p.dungeonsCompleted,
+      playSeconds: p.playSeconds,
+      enemiesKilled: p.enemiesKilled,
+      deaths: p.deaths,
       weapons: p.weapons,
       equipped: p.equipped,
       cosmetics: p.cosmetics,
@@ -134,6 +149,9 @@ export async function initProgress(): Promise<void> {
         level: profile.level,
         experience: profile.experience,
         dungeonsCompleted: profile.dungeonsCompleted,
+        playSeconds: profile.playSeconds,
+        enemiesKilled: profile.enemiesKilled,
+        deaths: profile.deaths,
         weapons: [...new Set([...profile.weapons.filter(isWeaponId), STARTER_WEAPON])],
         equipped: isWeaponId(profile.equipped) ? (profile.equipped as WeaponId) : STARTER_WEAPON,
         cosmetics: profile.cosmetics.filter(isCosmeticId),
@@ -168,7 +186,15 @@ async function maybeImportGuest() {
   try {
     const p = JSON.parse(raw) as Partial<Progress>;
     const hasStuff =
-      (Number(p.credits) || 0) > 0 || (Number(p.level) || 1) > 1 || (Number(p.experience) || 0) > 0 || (Number(p.dungeonsCompleted) || 0) > 0 || (p.weapons?.length ?? 0) > 1 || (p.cosmetics?.length ?? 0) > 0;
+      (Number(p.credits) || 0) > 0 ||
+      (Number(p.level) || 1) > 1 ||
+      (Number(p.experience) || 0) > 0 ||
+      (Number(p.dungeonsCompleted) || 0) > 0 ||
+      (Number(p.playSeconds) || 0) > 0 ||
+      (Number(p.enemiesKilled) || 0) > 0 ||
+      (Number(p.deaths) || 0) > 0 ||
+      (p.weapons?.length ?? 0) > 1 ||
+      (p.cosmetics?.length ?? 0) > 0;
     if (!hasStuff) {
       localStorage.setItem(IMPORT_KEY, "1");
       return;
@@ -180,6 +206,9 @@ async function maybeImportGuest() {
         credits: Math.max(0, Number(p.credits) || 0),
         ...xp,
         dungeonsCompleted: Math.max(0, Math.floor(Number(p.dungeonsCompleted) || 0)),
+        playSeconds: Math.max(0, Math.floor(Number(p.playSeconds) || 0)),
+        enemiesKilled: Math.max(0, Math.floor(Number(p.enemiesKilled) || 0)),
+        deaths: Math.max(0, Math.floor(Number(p.deaths) || 0)),
         weapons: (p.weapons ?? []).filter(isWeaponId),
         cosmetics: (p.cosmetics ?? []).filter(isCosmeticId),
       },
@@ -190,6 +219,9 @@ async function maybeImportGuest() {
       level: res.level,
       experience: res.experience,
       dungeonsCompleted: res.dungeonsCompleted,
+      playSeconds: res.playSeconds,
+      enemiesKilled: res.enemiesKilled,
+      deaths: res.deaths,
       weapons: [...new Set([...state.weapons, ...res.weapons])],
       cosmetics: [...new Set([...state.cosmetics, ...res.cosmetics])],
     };
@@ -253,6 +285,57 @@ export async function awardWave(
     level: xp.level,
     runId: null,
   };
+}
+
+export async function collectExperience(amount: number): Promise<{ levelsGained: number; level: number }> {
+  if (!Number.isInteger(amount) || amount <= 0 || amount > 100) {
+    throw new Error("Invalid experience orb value");
+  }
+  if (state.kind === "account") {
+    const result = await collectExperienceForAccount({ data: { amount } });
+    const levelsGained = result.level - state.level;
+    state = { ...state, level: result.level, experience: result.experience };
+    notify();
+    return { levelsGained, level: result.level };
+  }
+  const previousLevel = state.level;
+  const updated = addExperience(state, amount);
+  state = { ...state, ...updated };
+  saveGuest(state);
+  notify();
+  return { levelsGained: updated.level - previousLevel, level: updated.level };
+}
+
+export interface SessionStats {
+  seconds: number;
+  kills: number;
+  deaths: number;
+}
+
+export async function recordSessionStats(stats: SessionStats): Promise<void> {
+  const clean = {
+    seconds: Math.max(0, Math.min(86_400, Math.floor(stats.seconds))),
+    kills: Math.max(0, Math.min(10_000, Math.floor(stats.kills))),
+    deaths: Math.max(0, Math.min(10_000, Math.floor(stats.deaths))),
+  };
+  if (state.kind === "account") {
+    const updated = await recordPlayerSession({ data: clean });
+    state = {
+      ...state,
+      playSeconds: updated.playSeconds,
+      enemiesKilled: updated.enemiesKilled,
+      deaths: updated.deaths,
+    };
+  } else {
+    state = {
+      ...state,
+      playSeconds: state.playSeconds + clean.seconds,
+      enemiesKilled: state.enemiesKilled + clean.kills,
+      deaths: state.deaths + clean.deaths,
+    };
+    saveGuest(state);
+  }
+  notify();
 }
 
 export async function buyWeapon(id: WeaponId): Promise<void> {

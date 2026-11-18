@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/game/TopBar";
 import { PageShell } from "@/components/game/Picker";
@@ -13,18 +13,29 @@ import {
   setEquippedCosmetic,
   craftDungeonItem,
   enchantDungeonItem,
+  equipWeaponSkin,
+  openWeaponCrate as openWeaponCrateFromProgress,
   redeemCode,
+  spinLottery,
 } from "@/game/progress";
 import { ARMOUR_REDUCTION, COSMETICS, type CosmeticId } from "@/game/sim/cosmetics";
 import { canCraft, canEnchant, CRAFTING_RECIPES, ENCHANTMENTS } from "@/game/sim/dungeonLoot";
+import {
+  getWeaponSkin,
+  LOTTERY_PRICE,
+  WEAPON_CRATES,
+  WEAPON_SKINS,
+  type WeaponSkinId,
+  type WeaponSkinRarity,
+} from "@/game/sim/gacha";
 
 export const Route = createFileRoute("/armory")({
   head: () => ({
     meta: [
       { title: "Armory — Mexican Standof Weapons" },
-      { name: "description", content: "Spend dungeon credits on 5 weapons: Scout Pistol, Vector SMG, Riot Shotgun, Marksman Rifle and Longbow Sniper." },
+      { name: "description", content: "Unlock weapons, roll the coin lottery, and open seven tiers of animated weapon-skin crates." },
       { property: "og:title", content: "Armory — Mexican Standof" },
-      { property: "og:description", content: "Unlock and equip five weapons with the credits you earn." },
+      { property: "og:description", content: "Unlock weapons, roll the coin lottery, and collect weapon skins from crates." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -47,12 +58,22 @@ function ArmoryPage() {
   const p = useProgress();
   const [busy, setBusy] = useState<WeaponId | null>(null);
   const [busyArmor, setBusyArmor] = useState<CosmeticId | null>(null);
-  const [section, setSection] = useState<"weapons" | "armor" | "workshop" | "codes">(
+  const [section, setSection] = useState<"weapons" | "armor" | "workshop" | "crates" | "codes">(
     "weapons",
   );
   const [busyLoot, setBusyLoot] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [portalItem, setPortalItem] = useState<string | null>(null);
+  const [rolling, setRolling] = useState<WeaponSkinRarity | "lottery" | null>(null);
+  const [crateBusy, setCrateBusy] = useState<WeaponSkinRarity | null>(null);
+  const [skinBusy, setSkinBusy] = useState<WeaponSkinId | "unequip" | null>(null);
+  const [reveal, setReveal] = useState<{
+    name: string;
+    color: string;
+    rarity: WeaponSkinRarity;
+    refunded: boolean;
+  } | null>(null);
+  const [lotteryPrize, setLotteryPrize] = useState<number | null>(null);
   const equippedBySlot = {
     shirt: p.equippedShirt,
     hat: p.equippedHat,
@@ -125,6 +146,61 @@ function ArmoryPage() {
     }
   }
 
+  async function drawLottery() {
+    setRolling("lottery");
+    setLotteryPrize(null);
+    try {
+      const prize = await spinLottery();
+      await new Promise((resolve) => window.setTimeout(resolve, 1800));
+      setRolling(null);
+      setLotteryPrize(prize);
+      toast.success(prize ? `Lucky draw: ${prize} coins!` : "No coins this time — try again!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not spin the lottery");
+    } finally {
+      setRolling(null);
+    }
+  }
+
+  async function openCrate(rarity: WeaponSkinRarity) {
+    setCrateBusy(rarity);
+    setRolling(rarity);
+    setReveal(null);
+    try {
+      const result = await openWeaponCrateFromProgress(rarity);
+      await new Promise((resolve) => window.setTimeout(resolve, 1800));
+      const skin = getWeaponSkin(result.skinId);
+      setReveal({
+        name: skin?.name ?? "All skins collected",
+        color: skin?.color ?? "#80ff20",
+        rarity,
+        refunded: result.refunded,
+      });
+      toast.success(
+        result.refunded
+          ? "You already own every skin in this crate. Your coins were refunded."
+          : `${skin?.name ?? "New skin"} unlocked!`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not open crate");
+    } finally {
+      setRolling(null);
+      setCrateBusy(null);
+    }
+  }
+
+  async function equipSkin(skinId: WeaponSkinId | null) {
+    setSkinBusy(skinId ?? "unequip");
+    try {
+      await equipWeaponSkin(skinId);
+      toast.success(skinId ? `${getWeaponSkin(skinId)?.name} equipped` : "Weapon skin removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not equip weapon skin");
+    } finally {
+      setSkinBusy(null);
+    }
+  }
+
   return (
     <>
       <TopBar />
@@ -140,6 +216,15 @@ function ArmoryPage() {
             onClick={() => setSection("workshop")}
           >
             CRAFT & ENCHANT
+          </button>
+          <button
+            type="button"
+            className={`mso-btn ${section === "crates" ? "" : "mso-btn-ghost"}`}
+            role="tab"
+            aria-selected={section === "crates"}
+            onClick={() => setSection("crates")}
+          >
+            CRATES & LUCKY DRAW
           </button>
           <button
             type="button"
@@ -289,6 +374,135 @@ function ArmoryPage() {
               )}
             </div>
           </section>
+        ) : section === "crates" ? (
+          <section className="gacha-layout">
+            <article className="mso-panel lottery-panel">
+              <div className="hub-info-kicker">COIN PRIZE DRAW</div>
+              <h2 className="mso-display mt-1 text-3xl">LUCKY DRAW</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Spend {LOTTERY_PRICE} coins for a chance at a coin payout. Odds: 35% no prize,
+                35% · 50, 18% · 100, 9% · 250, 3% · 1,000.
+              </p>
+              <div className={`lottery-reel${rolling === "lottery" ? " is-rolling" : ""}`} aria-live="polite">
+                {rolling === "lottery"
+                  ? "ROLLING…"
+                  : lotteryPrize === null
+                    ? "?"
+                    : `+${lotteryPrize} ¢`}
+              </div>
+              <button
+                type="button"
+                className="mso-btn"
+                disabled={p.kind === "loading" || rolling !== null || p.credits < LOTTERY_PRICE}
+                onClick={() => void drawLottery()}
+              >
+                {p.credits < LOTTERY_PRICE
+                  ? `NEED ${LOTTERY_PRICE - p.credits} MORE COINS`
+                  : `DRAW · ${LOTTERY_PRICE} COINS`}
+              </button>
+            </article>
+            <div className="crate-section">
+              <div>
+                <div className="hub-info-kicker">GUARANTEED RARITY · UNIQUE SKINS</div>
+                <h2 className="mso-display mt-1 text-3xl">WEAPON CRATES</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Each crate rolls an animation and unlocks one new gun skin of its rarity.
+                  Collected skins work on every weapon.
+                </p>
+              </div>
+              <div className="crate-grid">
+                {WEAPON_CRATES.map(({ rarity, price }) => {
+                  const owned = p.weaponSkins.filter(
+                    (id) => getWeaponSkin(id)?.rarity === rarity,
+                  ).length;
+                  const total = WEAPON_SKINS.filter((skin) => skin.rarity === rarity).length;
+                  return (
+                    <article
+                      key={rarity}
+                      className={`mso-card crate-card crate-rarity-${rarity}`}
+                    >
+                      <div className="crate-box" aria-hidden="true">◆</div>
+                      <div className="crate-rarity-label">{rarity.toUpperCase()}</div>
+                      <p className="text-sm text-muted-foreground">{owned}/{total} unique skins</p>
+                      <button
+                        type="button"
+                        className="mso-btn mt-auto"
+                        disabled={
+                          p.kind === "loading" ||
+                          rolling !== null ||
+                          crateBusy !== null ||
+                          p.credits < price ||
+                          owned === total
+                        }
+                        onClick={() => void openCrate(rarity)}
+                      >
+                        {owned === total
+                          ? "ALL COLLECTED"
+                          : p.credits < price
+                            ? `NEED ${price - p.credits} MORE`
+                            : `OPEN · ${price} COINS`}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+              {(rolling !== null || reveal) && (
+                <div className="crate-reveal mso-panel" aria-live="polite" role="status">
+                  <div
+                    className={`crate-reveal-icon${rolling !== null ? " is-rolling" : ""}`}
+                    style={{ "--reveal-color": reveal?.color ?? "#80ff20" } as CSSProperties}
+                  >
+                    {rolling !== null ? "◆" : reveal?.refunded ? "✓" : "✦"}
+                  </div>
+                  <div className="hub-info-kicker">
+                    {rolling !== null ? "CRATE OPENING" : reveal?.rarity.toUpperCase()}
+                  </div>
+                  <strong className="mso-display text-2xl">
+                    {rolling !== null ? "ROLLING…" : reveal?.name}
+                  </strong>
+                </div>
+              )}
+              <div>
+                <div className="hub-info-kicker">YOUR COLLECTION</div>
+                <h3 className="mso-display mt-1 text-2xl">WEAPON SKINS</h3>
+                <div className="weapon-skin-grid">
+                  {p.weaponSkins.map((id) => {
+                    const skin = getWeaponSkin(id);
+                    if (!skin) return null;
+                    const equipped = p.equippedWeaponSkin === id;
+                    return (
+                      <article key={id} className={`weapon-skin-card crate-rarity-${skin.rarity}`}>
+                        <span className="weapon-skin-swatch" style={{ backgroundColor: skin.color }} />
+                        <span className="weapon-skin-name">{skin.name}</span>
+                        <span className="weapon-skin-rarity">{skin.rarity}</span>
+                        <button
+                          type="button"
+                          className={`mso-btn ${equipped ? "mso-btn-ghost" : ""}`}
+                          disabled={equipped || skinBusy !== null || rolling !== null}
+                          onClick={() => void equipSkin(id)}
+                        >
+                          {equipped ? "EQUIPPED" : "EQUIP"}
+                        </button>
+                      </article>
+                    );
+                  })}
+                  {p.weaponSkins.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Open a crate to collect your first weapon skin.</p>
+                  )}
+                  {p.equippedWeaponSkin && (
+                    <button
+                      type="button"
+                      className="mso-btn mso-btn-ghost"
+                      disabled={skinBusy !== null || rolling !== null}
+                      onClick={() => void equipSkin(null)}
+                    >
+                      REMOVE EQUIPPED SKIN
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
         ) : (
           <section className="codes-panel mso-panel">
             <div className="hub-info-kicker">SECRET REDEEMABLES</div>
@@ -316,7 +530,7 @@ function ArmoryPage() {
             </form>
             <div className="codes-status">
               <span>REDEEMED: <b>{p.redeemedCodes.length}/2</b></span>
-              {p.racingUnlocked && <a className="mso-btn" href="/racing">ENTER GUN RACING</a>}
+              <a className="mso-btn" href="/racing">PLAY 3D CAR RACE</a>
             </div>
           </section>
         )}

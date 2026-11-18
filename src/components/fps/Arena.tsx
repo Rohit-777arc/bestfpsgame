@@ -14,11 +14,14 @@ import { EnemyMesh, RemoteMesh, type EnemyRuntime, type RemoteRuntime } from "./
 import { TouchControls, type TouchInput } from "./TouchControls";
 import { Button } from "@/components/ui/button";
 import { CharacterPreview } from "@/components/game/CharacterPreview";
+import { GameChat, type GameChatMessage } from "@/components/game/GameChat";
 import { ExperienceBar } from "@/components/game/ExperienceBar";
 import { DUNGEON_WAVES, enemyExperience } from "@/game/sim/progression";
 import { playExperiencePickup, playLevelUp } from "@/game/audio";
 import { isCoordinator, playerId, sendEvent, sendState, type NetBus, type NetEvent, type RosterEntry } from "@/game/net";
 import { HOTBAR_ITEMS, type HotbarInventory } from "@/game/sim/hotbar";
+import { getWeaponSkin, type WeaponSkinId } from "@/game/sim/gacha";
+import type { AvatarColors } from "@/game/sim/avatar";
 
 export type ArenaMode = "dungeon" | "train" | "coop" | "duel";
 type ControlMode = "pc" | "mobile";
@@ -50,6 +53,8 @@ export interface ArenaProps {
   equippedHat?: string | null;
   equippedPants?: string | null;
   equippedBoots?: string | null;
+  equippedWeaponSkin?: WeaponSkinId | null;
+  avatarColors?: AvatarColors | undefined;
   armourReduction?: number;
   net?: NetLink;
   onWaveCleared?: (wave: number) => Promise<{ awarded: number; experience: number; levelsGained?: number; level?: number }> | { awarded: number; experience: number; levelsGained?: number; level?: number } | undefined;
@@ -65,6 +70,7 @@ export interface ArenaProps {
   onToggleAvatar?: () => void;
   onRestart?: () => void;
   onExit: (stats: ArenaSessionStats) => void | Promise<void>;
+  onChatMessage?: (message: GameChatMessage) => void;
 }
 
 const EYE = 1.7;
@@ -484,6 +490,14 @@ function World(
         checkDuelEnd();
       } else if (e.type === "restart") {
         begin();
+      } else if (e.type === "chat") {
+        if (e.from !== playerId()) {
+          props.onChatMessage?.({
+            id: e.id,
+            name: e.name.slice(0, 32),
+            text: e.text.slice(0, 240),
+          });
+        }
       }
     };
     return () => {
@@ -491,7 +505,7 @@ function World(
       net.bus.current.onEvent = undefined;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [net, mode, startWave, begin]);
+  }, [net, mode, startWave, begin, props.onChatMessage]);
 
   function checkDuelEnd() {
     for (const [id, s] of Object.entries(duelScore.current)) {
@@ -547,6 +561,7 @@ function World(
   useEffect(() => {
     const el = gl.domElement;
     const kd = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
       keys.current[e.code] = true;
       if (e.code === "Space") e.preventDefault();
       if (e.code === "KeyR") startReload();
@@ -1293,7 +1308,8 @@ function World(
   });
 
   const gunLen = weapon.id === "longbow-sniper" ? 0.75 : weapon.id === "marksman-rifle" ? 0.62 : weapon.id === "riot-shotgun" ? 0.55 : weapon.id === "vector-smg" ? 0.4 : 0.28;
-  const gunCol = weapon.id === "riot-shotgun" ? "#5a3a22" : weapon.id === "vector-smg" ? "#2a2d33" : weapon.id === "longbow-sniper" ? "#3b4a33" : "#3a3d40";
+  const gunCol = getWeaponSkin(props.equippedWeaponSkin ?? null)?.color ??
+    (weapon.id === "riot-shotgun" ? "#5a3a22" : weapon.id === "vector-smg" ? "#2a2d33" : weapon.id === "longbow-sniper" ? "#3b4a33" : "#3a3d40");
 
   return (
     <>
@@ -1374,6 +1390,8 @@ export function Arena(props: ArenaProps) {
   const weapon = WEAPONS[props.weapon];
   const [hud, setHud] = useState<Hud>(() => initialHud(weapon.mag));
   const [knifeMenu, setKnifeMenu] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<GameChatMessage[]>([]);
   const feedId = useRef(0);
   const startRef = useRef<() => void>(() => {});
   const resumeRef = useRef<() => void>(() => {});
@@ -1408,10 +1426,36 @@ export function Arena(props: ArenaProps) {
   useEffect(() => {
     const openKnifeMenu = (event: KeyboardEvent) => {
       if (event.code === "KeyF") setKnifeMenu((open) => !open);
+      if (event.code === "KeyT" && !(event.target instanceof HTMLInputElement)) {
+        event.preventDefault();
+        setChatOpen((open) => !open);
+        document.exitPointerLock?.();
+      }
     };
     addEventListener("keydown", openKnifeMenu);
     return () => removeEventListener("keydown", openKnifeMenu);
   }, []);
+
+  const receiveChatMessage = useCallback((message: GameChatMessage) => {
+    setChatMessages((messages) => [...messages.slice(-7), message]);
+  }, []);
+
+  const sendChatMessage = (text: string) => {
+    const message = {
+      id: `${playerId()}-${Date.now()}`,
+      name: props.playerName,
+      text,
+    };
+    receiveChatMessage(message);
+    if (props.net) {
+      sendEvent(props.net.channelRef.current, {
+        type: "chat",
+        from: playerId(),
+        ...message,
+      });
+    }
+    setChatOpen(false);
+  };
 
   const paused = !hud.locked && !hud.over;
   const map = MAPS[props.map];
@@ -1469,6 +1513,7 @@ export function Arena(props: ArenaProps) {
           resumeRef={resumeRef}
           controlMode={controlModeRef}
           paused={paused}
+          onChatMessage={receiveChatMessage}
           touchInput={touchInput}
           reloadRef={reloadRef}
           statsRef={statsRef}
@@ -1476,6 +1521,12 @@ export function Arena(props: ArenaProps) {
       </Canvas>
 
       <TouchControls input={touchInput.current} scopedWeapon={weapon.scope} active={controlMode === "mobile"} onReload={() => reloadRef.current()} />
+      <GameChat
+        open={chatOpen}
+        messages={chatMessages}
+        onSend={sendChatMessage}
+        onClose={() => setChatOpen(false)}
+      />
       {avatarVisible && (
         <div
           className="fps-third-person-preview"
@@ -1488,6 +1539,8 @@ export function Arena(props: ArenaProps) {
             pantsId={props.equippedPants ?? null}
             bootsId={props.equippedBoots ?? null}
             weaponId={props.weapon}
+            avatarColors={props.avatarColors}
+            weaponSkinId={props.equippedWeaponSkin}
             rotatable
           />
           <span>THIRD-PERSON PREVIEW · F5 TO HIDE</span>
@@ -1604,6 +1657,7 @@ export function Arena(props: ArenaProps) {
                 hatId={props.equippedHat ?? null}
                 pantsId={props.equippedPants ?? null}
                 bootsId={props.equippedBoots ?? null}
+                avatarColors={props.avatarColors}
               />
               <div>
                 <span className="fps-micro-label">LEVEL {props.level ?? 1}</span>

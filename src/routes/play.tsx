@@ -65,6 +65,8 @@ function PlayPage() {
         equippedHat={p.equippedHat}
         equippedPants={p.equippedPants}
         equippedBoots={p.equippedBoots}
+        equippedWeaponSkin={p.equippedWeaponSkin}
+        avatarColors={p.avatarCustomizationUnlocked ? p.avatarColors : undefined}
         armourReduction={ARMOUR_REDUCTION[p.equippedShirt ?? ""] ?? 0}
         onWaveCleared={async (wave) => {
           const res = await awardWave(map, diff, wave, runId.current);

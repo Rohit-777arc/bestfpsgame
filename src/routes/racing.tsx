@@ -1,13 +1,18 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { TopBar } from "@/components/game/TopBar";
-import { useProgress } from "@/components/game/useProgress";
+import { GameChat, type GameChatMessage } from "@/components/game/GameChat";
 
 export const Route = createFileRoute("/racing")({
   ssr: false,
-  head: () => ({ meta: [{ title: "Gun Racing — Mexican Standof" }] }),
+  head: () => ({
+    meta: [
+      { title: "3D Car Racing — Mexican Standof" },
+      { name: "description", content: "Drive a 3D car, steer through traffic, boost, and collect coins." },
+    ],
+  }),
   component: RacingPage,
 });
 
@@ -15,22 +20,16 @@ type RaceHud = {
   speedRef: MutableRefObject<number>;
   nitroRef: MutableRefObject<number>;
   steeringRef: MutableRefObject<number>;
-  shootSignalRef: MutableRefObject<number>;
   onTitle: (title: string) => void;
-  onDamage: (amount: number) => void;
-  onAmmo: (amount: number) => void;
-  onMedkit: () => void;
-  onRivalHit: (amount: number) => void;
+  onScore: (amount: number) => void;
 };
 
 function RoadCar({
   position,
   color = "#d83d36",
-  rival = false,
 }: {
   position: [number, number, number];
   color?: string;
-  rival?: boolean;
 }) {
   return (
     <group position={position}>
@@ -50,23 +49,6 @@ function RoadCar({
           </mesh>
         )),
       )}
-      {rival ? (
-        <mesh position={[0, 0.42, -1.58]} rotation-x={Math.PI / 2} castShadow>
-          <cylinderGeometry args={[0.04, 0.04, 0.55, 12]} />
-          <meshStandardMaterial color="#111519" metalness={0.8} />
-        </mesh>
-      ) : (
-        <group position={[0, 0.55, -1.58]}>
-          <mesh rotation-x={Math.PI / 2} castShadow>
-            <cylinderGeometry args={[0.09, 0.09, 1.2, 14]} />
-            <meshStandardMaterial color="#263038" metalness={0.85} roughness={0.25} />
-          </mesh>
-          <mesh position={[0, 0, -0.58]} castShadow>
-            <boxGeometry args={[0.22, 0.22, 0.18]} />
-            <meshStandardMaterial color="#d9e1dd" metalness={0.7} />
-          </mesh>
-        </group>
-      )}
       <mesh position={[-0.48, 0.63, -1.56]}>
         <boxGeometry args={[0.32, 0.12, 0.08]} />
         <meshStandardMaterial color="#fff1ae" emissive="#ffd45a" emissiveIntensity={2} />
@@ -82,7 +64,6 @@ function RoadCar({
 function RaceScene(props: RaceHud) {
   const car = useRef<THREE.Group>(null);
   const rivals = useRef<(THREE.Group | null)[]>([null, null, null]);
-  const rivalHealth = useRef([1000, 1000, 1000]);
   const rivalStates = useRef([
     { x: -3.2, z: 16, y: 0, vy: 0, collided: false },
     { x: 3.2, z: 24, y: 0, vy: 0, collided: false },
@@ -91,14 +72,12 @@ function RaceScene(props: RaceHud) {
   const pickups = useRef<(THREE.Group | null)[]>([null, null, null, null]);
   const pickupStates = useRef([
     { x: -2.6, z: 20, kind: "nitro", active: true },
-    { x: 2.7, z: 31, kind: "ammo", active: true },
-    { x: 0, z: 43, kind: "med", active: true },
-    { x: -3.1, z: 55, kind: "ammo", active: true },
+    { x: 2.7, z: 31, kind: "coin", active: true },
+    { x: 0, z: 43, kind: "coin", active: true },
+    { x: -3.1, z: 55, kind: "coin", active: true },
   ]);
   const roadside = useRef<(THREE.Group | null)[]>([null, null, null, null]);
   const stripes = useRef<(THREE.Mesh | null)[]>([]);
-  const lastShoot = useRef(props.shootSignalRef.current);
-  const ammoTimer = useRef(0);
   const roadTime = useRef(0);
 
   useFrame((state, rawDelta) => {
@@ -158,42 +137,19 @@ function RaceScene(props: RaceHud) {
       ) {
         rival.collided = true;
         rival.vy = speed > 110 ? 8 : 4;
-        props.onDamage(speed > 110 ? 180 : 95);
         props.onTitle(speed > 110 ? "WRECKED" : "SIDE-SWIPE");
       }
     });
-
-    if (lastShoot.current !== props.shootSignalRef.current) {
-      lastShoot.current = props.shootSignalRef.current;
-      let target = -1;
-      let closest = 10;
-      rivalStates.current.forEach((rival, i) => {
-        if (rival.collided) return;
-        const distance = car.current ? Math.abs(rival.z - car.current.position.z) : 99;
-        if (distance < closest) {
-          closest = distance;
-          target = i;
-        }
-      });
-      if (target >= 0 && closest < 13) {
-        rivalHealth.current[target] = Math.max(0, rivalHealth.current[target] - 250);
-        props.onRivalHit(rivalHealth.current[target]);
-        props.onTitle(rivalHealth.current[target] === 0 ? "RIVAL WRECKED" : "TARGET HIT");
-        if (rivalHealth.current[target] === 0) {
-          rivalStates.current[target].collided = true;
-          rivalStates.current[target].vy = 7;
-        }
-      } else {
-        props.onTitle("MISSED");
-      }
-    }
 
     pickupStates.current.forEach((pickup, i) => {
       const group = pickups.current[i];
       if (!group) return;
       if (!pickup.active) {
         pickup.z += 0.5 * delta;
-        if (pickup.z > 58) pickup.z = 48;
+        if (pickup.z > 58) {
+          pickup.z = 48;
+          pickup.active = true;
+        }
       } else {
         pickup.z -= (3.5 + speed * 0.018) * delta;
         if (pickup.z < -8) pickup.z = 55 + i * 7;
@@ -211,24 +167,12 @@ function RaceScene(props: RaceHud) {
         if (pickup.kind === "nitro") {
           props.nitroRef.current = Math.min(100, props.nitroRef.current + 34);
           props.onTitle("NITRO +34");
-        } else if (pickup.kind === "ammo") {
-          props.onAmmo(20);
-          props.onTitle("AMMO DROP");
         } else {
-          props.onMedkit();
-          props.onTitle("MEDKIT");
+          props.onScore(100);
+          props.onTitle("COINS +100");
         }
       }
     });
-
-    ammoTimer.current += delta;
-    if (ammoTimer.current >= 60) {
-      ammoTimer.current = 0;
-      pickupStates.current.forEach((pickup) => {
-        if (pickup.kind === "ammo" && !pickup.active) pickup.active = true;
-      });
-      props.onTitle("AMMO DROP INBOUND");
-    }
 
     roadside.current.forEach((object, i) => {
       if (!object) return;
@@ -239,8 +183,7 @@ function RaceScene(props: RaceHud) {
         Math.abs(object.position.z - car.current.position.z) < 1 &&
         Math.abs(Math.abs(object.position.x) - Math.abs(car.current.position.x)) < 0.9
       ) {
-        props.onDamage(45);
-        props.onTitle(i % 2 === 0 ? "LIGHT TAKER" : "FIRE TAKER");
+        props.onTitle("ROAD EDGE");
         object.position.z -= 8;
       }
     });
@@ -314,7 +257,7 @@ function RaceScene(props: RaceHud) {
           ref={(node) => { rivals.current[i] = node; }}
           position={[rival.x, rival.y, rival.z]}
         >
-          <RoadCar position={[0, 0, 0]} color={["#4d79c9", "#f3b84a", "#55a875"][i]} rival />
+          <RoadCar position={[0, 0, 0]} color={["#4d79c9", "#f3b84a", "#55a875"][i]} />
         </group>
       ))}
       {pickupStates.current.map((pickup, i) => (
@@ -334,15 +277,10 @@ function RaceScene(props: RaceHud) {
                 <meshStandardMaterial color="#1c2b31" />
               </mesh>
             </>
-          ) : pickup.kind === "ammo" ? (
-            <mesh>
-              <boxGeometry args={[0.72, 0.42, 0.72]} />
-              <meshStandardMaterial color="#d8ad45" emissive="#7f5d16" emissiveIntensity={0.35} />
-            </mesh>
           ) : (
             <mesh>
-              <boxGeometry args={[0.72, 0.72, 0.72]} />
-              <meshStandardMaterial color="#edf4ed" emissive="#78b58b" emissiveIntensity={0.35} />
+              <boxGeometry args={[0.72, 0.42, 0.72]} />
+              <meshStandardMaterial color="#ff9d24" emissive="#ff5522" emissiveIntensity={0.6} />
             </mesh>
           )}
         </group>
@@ -369,27 +307,27 @@ function RaceScene(props: RaceHud) {
 }
 
 function RacingPage() {
-  const p = useProgress();
   const [speed, setSpeed] = useState(0);
   const [nitro, setNitro] = useState(100);
-  const [health, setHealth] = useState(1000);
-  const [ammo, setAmmo] = useState(60);
-  const [rivalHealth, setRivalHealth] = useState(1000);
+  const [score, setScore] = useState(0);
+  const [distance, setDistance] = useState(0);
   const [title, setTitle] = useState("RACING READY");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<GameChatMessage[]>([]);
   const keys = useRef<Record<string, boolean>>({});
   const speedRef = useRef(0);
   const nitroRef = useRef(100);
   const steeringRef = useRef(0);
-  const shootSignalRef = useRef(0);
   const driftChain = useRef(0);
+  const distanceRef = useRef(0);
 
   useEffect(() => {
-    if (!p.racingUnlocked) return;
     let frame = 0;
     let last = performance.now();
     const down = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement) return;
       keys.current[event.code] = true;
-      if (event.code === "KeyF") fire();
+      if (event.code === "KeyT") setChatOpen((open) => !open);
     };
     const up = (event: KeyboardEvent) => { keys.current[event.code] = false; };
     addEventListener("keydown", down);
@@ -403,9 +341,10 @@ function RacingPage() {
       const boosting = (keys.current.ShiftLeft || keys.current.ShiftRight) && nitroRef.current > 0;
       const target = keys.current.KeyW || keys.current.ArrowUp
         ? (boosting ? 230 : 150)
-        : (keys.current.KeyS || keys.current.ArrowDown ? 35 : 55);
+        : (keys.current.KeyS || keys.current.ArrowDown ? 35 : 0);
       const next = THREE.MathUtils.lerp(speedRef.current, target, dt * (target > speedRef.current ? 1.5 : 2.2));
       speedRef.current = Math.max(0, Math.min(230, next));
+      distanceRef.current += (speedRef.current / 3.6) * dt;
       if (boosting) {
         nitroRef.current = Math.max(0, nitroRef.current - 24 * dt);
         setNitro(nitroRef.current);
@@ -413,7 +352,6 @@ function RacingPage() {
         nitroRef.current = Math.min(100, nitroRef.current + 3.5 * dt);
         setNitro(nitroRef.current);
       }
-      setSpeed(speedRef.current);
       if (steeringRef.current !== 0 && speedRef.current > 70) {
         driftChain.current += dt;
         if (driftChain.current > 0.65) setTitle(`DRIFT x${Math.min(5, Math.floor(driftChain.current + 1))}`);
@@ -428,34 +366,16 @@ function RacingPage() {
       removeEventListener("keydown", down);
       removeEventListener("keyup", up);
     };
-  }, [p.racingUnlocked]);
+  }, []);
 
-  const fire = () => {
-    setAmmo((value) => {
-      if (value <= 0) {
-        setTitle("OUT OF AMMO");
-        return value;
-      }
-      shootSignalRef.current += 1;
-      return value - 1;
-    });
-  };
-
-  if (!p.racingUnlocked) {
-    return (
-      <>
-        <TopBar />
-        <main className="mx-auto max-w-4xl px-4 py-16 text-center">
-          <div className="mso-panel rounded-xl p-10">
-            <div className="hub-info-kicker">LOCKED EVENT</div>
-            <h1 className="mso-display mt-3 text-5xl">GUN RACING</h1>
-            <p className="mt-4 text-muted-foreground">Redeem <b>GUNRACE</b> in Codes & Rewards to unlock this mode.</p>
-            <Link className="mso-btn mt-6 inline-flex" to="/armory">OPEN CODES</Link>
-          </div>
-        </main>
-      </>
-    );
-  }
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSpeed(speedRef.current);
+      setNitro(nitroRef.current);
+      setDistance(distanceRef.current);
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <>
@@ -471,26 +391,32 @@ function RacingPage() {
             speedRef={speedRef}
             nitroRef={nitroRef}
             steeringRef={steeringRef}
-            shootSignalRef={shootSignalRef}
             onTitle={setTitle}
-            onDamage={(amount) => setHealth((value) => Math.max(0, value - amount))}
-            onAmmo={(amount) => setAmmo((value) => value + amount)}
-            onMedkit={() => setHealth((value) => Math.min(1000, value + 250))}
-            onRivalHit={(hp) => setRivalHealth(hp)}
+            onScore={(amount) => setScore((value) => value + amount)}
           />
         </Canvas>
         <div className="racing-title" key={title}>{title}</div>
         <div className="racing-hud">
           <div><span>SPEED</span><strong>{Math.round(speed)} KM/H</strong></div>
           <div><span>NITRO</span><strong>{Math.round(nitro)}%</strong></div>
-          <div><span>CAR HP</span><strong>{health}/1000</strong></div>
-          <div><span>AMMO</span><strong>{ammo}</strong></div>
-          <div><span>RIVAL HP</span><strong>{rivalHealth}/1000</strong></div>
+          <div><span>DISTANCE</span><strong>{Math.floor(distance)} M</strong></div>
+          <div><span>COINS</span><strong>{score}</strong></div>
         </div>
         <div className="racing-controls">
-          <span>W/S</span> ACCELERATE/BRAKE · <span>A/D</span> STEER/DRIFT · <span>SHIFT</span> NITRO ·
-          <button type="button" onClick={fire}>FIRE GUN</button>
+          <span>W/S</span> ACCELERATE/BRAKE · <span>A/D</span> STEER · <span>SHIFT</span> NITRO · COLLECT THE GLOWING ORBS
         </div>
+        <GameChat
+          open={chatOpen}
+          messages={chatMessages}
+          onSend={(text) => {
+            setChatMessages((messages) => [
+              ...messages.slice(-7),
+              { id: `${Date.now()}-${Math.random()}`, name: "YOU", text },
+            ]);
+            setChatOpen(false);
+          }}
+          onClose={() => setChatOpen(false)}
+        />
       </main>
     </>
   );

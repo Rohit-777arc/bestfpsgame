@@ -113,6 +113,8 @@ function CoopPage() {
         equippedHat={p.equippedHat}
         equippedPants={p.equippedPants}
         equippedBoots={p.equippedBoots}
+        equippedWeaponSkin={p.equippedWeaponSkin}
+        avatarColors={p.avatarCustomizationUnlocked ? p.avatarColors : undefined}
         net={{ channelRef, bus, roster }}
         onExperienceCollected={collectExperience}
         {...(mode === "coop"

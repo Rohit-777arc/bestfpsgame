@@ -6,21 +6,24 @@ import { waveCredits } from "./sim/waves";
 import { COSMETICS, isCosmeticId } from "./sim/cosmetics";
 import { CRAFTING_RECIPES } from "./sim/dungeonLoot";
 import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, totalExperience, waveExperience } from "./sim/progression";
+import { isWeaponSkinId, isWeaponSkinRarity } from "./sim/gacha";
+import { AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLORS } from "./sim/avatar";
 
 export const getProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const [{ data: profile }, { data: weapons }, { data: cosmetics }] = await Promise.all([
+    const [{ data: profile }, { data: weapons }, { data: cosmetics }, { data: weaponSkins }] = await Promise.all([
       supabase
         .from("profiles")
         .select(
-          "id, display_name, credits, equipped_weapon, level, experience, dungeons_completed, play_seconds, enemies_killed, deaths, equipped_shirt, equipped_hat, equipped_pants, equipped_boots",
+          "id, display_name, credits, equipped_weapon, equipped_weapon_skin, level, experience, dungeons_completed, play_seconds, enemies_killed, deaths, equipped_shirt, equipped_hat, equipped_pants, equipped_boots, avatar_customization_unlocked, avatar_skin_tone, avatar_hair_color, avatar_body_color, avatar_feet_color, avatar_boots_color, avatar_accessories_color, avatar_mask_color, avatar_hat_color, avatar_dress_color",
         )
         .eq("id", userId)
         .single(),
       supabase.from("profile_weapons").select("weapon_id").eq("user_id", userId),
       supabase.from("profile_cosmetics").select("cosmetic_id").eq("user_id", userId),
+      supabase.from("profile_weapon_skins").select("skin_id").eq("user_id", userId),
     ]);
     return {
       name: profile?.display_name ?? "Player",
@@ -34,11 +37,117 @@ export const getProfile = createServerFn({ method: "GET" })
       equipped: profile?.equipped_weapon ?? "scout-pistol",
       weapons: (weapons ?? []).map((w) => String(w.weapon_id)),
       cosmetics: (cosmetics ?? []).map((item) => String(item.cosmetic_id)),
+      weaponSkins: (weaponSkins ?? []).map((item) => String(item.skin_id)),
+      equippedWeaponSkin: profile?.equipped_weapon_skin ?? null,
+      avatarCustomizationUnlocked: profile?.avatar_customization_unlocked ?? false,
+      avatarColors: profile
+        ? {
+            headColor: profile.avatar_skin_tone,
+            hairColor: profile.avatar_hair_color,
+            bodyColor: profile.avatar_body_color,
+            feetColor: profile.avatar_feet_color,
+            bootsColor: profile.avatar_boots_color,
+            accessoriesColor: profile.avatar_accessories_color,
+            maskColor: profile.avatar_mask_color,
+            hatColor: profile.avatar_hat_color,
+            dressColor: profile.avatar_dress_color,
+          }
+        : DEFAULT_AVATAR_COLORS,
       equippedShirt: profile?.equipped_shirt ?? null,
       equippedHat: profile?.equipped_hat ?? null,
       equippedPants: profile?.equipped_pants ?? null,
       equippedBoots: profile?.equipped_boots ?? null,
     };
+  });
+
+const crateInput = z.object({ rarity: z.string() });
+
+export const openWeaponCrate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => crateInput.parse(input))
+  .handler(async ({ data, context }) => {
+    if (!isWeaponSkinRarity(data.rarity)) throw new Error("Unknown crate rarity");
+    const { data: result, error } = await context.supabase.rpc("open_weapon_crate", {
+      crate_rarity: data.rarity,
+    });
+    if (error || !result?.[0]) throw new Error(error?.message ?? "Could not open crate");
+    return {
+      skinId: result[0].skin_id,
+      credits: result[0].credits,
+      refunded: result[0].refunded,
+    };
+  });
+
+export const spinCreditLottery = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: result, error } = await context.supabase.rpc("spin_credit_lottery", {});
+    if (error || !result?.[0]) throw new Error(error?.message ?? "Could not spin the lottery");
+    return { prize: result[0].prize, credits: result[0].credits };
+  });
+
+export const unlockAvatarCustomization = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: result, error } = await context.supabase.rpc("unlock_avatar_customization", {});
+    if (error || !result?.[0]) throw new Error(error?.message ?? "Could not unlock customization");
+    return { credits: result[0].credits, unlocked: result[0].unlocked };
+  });
+
+const weaponSkinInput = z.object({ skinId: z.string().nullable() });
+
+export const equipWeaponSkin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => weaponSkinInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    if (data.skinId) {
+      const { data: owned, error: ownedError } = await supabase
+        .from("profile_weapon_skins")
+        .select("skin_id")
+        .eq("user_id", userId)
+        .eq("skin_id", data.skinId)
+        .maybeSingle();
+      if (ownedError || !owned) throw new Error("You don't own that weapon skin");
+    }
+    const { error } = await supabase
+      .from("profiles")
+      .update({ equipped_weapon_skin: data.skinId })
+      .eq("id", userId);
+    if (error) throw new Error("Could not equip weapon skin");
+    return { skinId: data.skinId };
+  });
+
+const avatarColorsInput = z.object({
+  headColor: z.enum(AVATAR_COLOR_OPTIONS),
+  hairColor: z.enum(AVATAR_COLOR_OPTIONS),
+  bodyColor: z.enum(AVATAR_COLOR_OPTIONS),
+  feetColor: z.enum(AVATAR_COLOR_OPTIONS),
+  bootsColor: z.enum(AVATAR_COLOR_OPTIONS),
+  accessoriesColor: z.enum(AVATAR_COLOR_OPTIONS),
+  maskColor: z.enum(AVATAR_COLOR_OPTIONS),
+  hatColor: z.enum(AVATAR_COLOR_OPTIONS),
+  dressColor: z.enum(AVATAR_COLOR_OPTIONS),
+});
+
+export const saveAvatarColors = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => avatarColorsInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("avatar_customization_unlocked")
+      .eq("id", userId)
+      .single();
+    if (profileError || !profile?.avatar_customization_unlocked) {
+      throw new Error("Unlock avatar customization before changing your colors");
+    }
+    const { data: saved, error } = await supabase.rpc("save_avatar_customization", {
+      colors: data,
+    });
+    if (error || !saved) throw new Error("Could not save avatar colors");
+    return data;
   });
 
 const playerSearchInput = z.object({ query: z.string().trim().min(2).max(32) });
@@ -328,6 +437,8 @@ const importInput = z.object({
   deaths: z.number().int().min(0).max(1_000_000),
   weapons: z.array(z.string()).max(10),
   cosmetics: z.array(z.string()).max(20),
+  weaponSkins: z.array(z.string()).max(21),
+  equippedWeaponSkin: z.string().nullable(),
 });
 
 /** Carries a guest's browser progress over to a new account, once. */
@@ -370,6 +481,15 @@ export const importGuestProgress = createServerFn({ method: "POST" })
         { ignoreDuplicates: true },
       );
     }
+    const validWeaponSkins = data.weaponSkins.filter(isWeaponSkinId);
+    const { data: importedSkins, error: importSkinsError } = await supabase.rpc(
+      "import_guest_weapon_skins",
+      {
+        skin_ids: validWeaponSkins,
+        equipped_skin: data.equippedWeaponSkin,
+      },
+    );
+    if (importSkinsError) throw new Error("Could not import weapon skins");
     return {
       credits: target,
       level: Math.max(prof?.level ?? 1, xp.level),
@@ -380,5 +500,10 @@ export const importGuestProgress = createServerFn({ method: "POST" })
       deaths,
       weapons: valid,
       cosmetics: validCosmetics,
+      weaponSkins: importedSkins ?? [],
+      equippedWeaponSkin:
+        data.equippedWeaponSkin && importedSkins?.includes(data.equippedWeaponSkin)
+          ? data.equippedWeaponSkin
+          : null,
     };
   });

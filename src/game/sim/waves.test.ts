@@ -12,24 +12,24 @@ import {
   waveCredits,
 } from "./waves";
 
-// The credit payouts the user set: Easy 5, Normal 10, Hard 20 per wave.
+// Wave rewards are generous enough to make progression and cosmetics accessible.
 describe("wave credit payouts", () => {
-  it("pays 5 credits per easy wave", () => {
-    expect(waveCredits("easy")).toBe(5);
+  it("pays 20 credits per easy wave", () => {
+    expect(waveCredits("easy")).toBe(20);
   });
-  it("pays 10 credits per normal wave", () => {
-    expect(waveCredits("normal")).toBe(10);
+  it("pays 35 credits per normal wave", () => {
+    expect(waveCredits("normal")).toBe(35);
   });
-  it("pays 20 credits per hard wave", () => {
-    expect(waveCredits("hard")).toBe(20);
+  it("pays 55 credits per hard wave", () => {
+    expect(waveCredits("hard")).toBe(55);
   });
   it("harder difficulties never pay less than easier ones", () => {
     expect(DIFFICULTIES.hard.creditsPerWave).toBeGreaterThan(DIFFICULTIES.normal.creditsPerWave);
     expect(DIFFICULTIES.normal.creditsPerWave).toBeGreaterThan(DIFFICULTIES.easy.creditsPerWave);
   });
   it("sums full-run payouts", () => {
-    expect(runCredits("easy", 4)).toBe(20);
-    expect(runCredits("hard", 3)).toBe(60);
+    expect(runCredits("easy", 4)).toBe(80);
+    expect(runCredits("hard", 3)).toBe(165);
     expect(runCredits("normal", 0)).toBe(0);
   });
 });

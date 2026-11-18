@@ -6,6 +6,21 @@ import { isWeaponId, STARTER_WEAPON, WEAPONS, WEAPON_IDS, type WeaponId } from "
 import { waveCredits, type Difficulty } from "./sim/waves";
 import type { MapId } from "./sim/maps";
 import { COSMETICS, isCosmeticId, type CosmeticId, type CosmeticSlot } from "./sim/cosmetics";
+import {
+  isWeaponSkinId,
+  rollLottery,
+  rollWeaponSkin,
+  type WeaponSkinId,
+  type WeaponSkinRarity,
+  LOTTERY_PRICE,
+  WEAPON_CRATES,
+  WEAPON_SKINS,
+} from "./sim/gacha";
+import {
+  DEFAULT_AVATAR_COLORS,
+  isAvatarColors,
+  type AvatarColors,
+} from "./sim/avatar";
 import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, waveExperience } from "./sim/progression";
 import {
   canCraft,
@@ -33,6 +48,11 @@ import {
   importGuestProgress,
   purchaseCosmetic,
   purchaseWeapon,
+  openWeaponCrate as openWeaponCrateForAccount,
+  spinCreditLottery,
+  unlockAvatarCustomization as unlockAvatarCustomizationForAccount,
+  equipWeaponSkin as equipWeaponSkinForAccount,
+  saveAvatarColors,
   recordPlayerSession,
   renamePlayer,
   spendCreditsForCraft,
@@ -140,6 +160,10 @@ export interface Progress {
   equippedHat: CosmeticId | null;
   equippedPants: CosmeticId | null;
   equippedBoots: CosmeticId | null;
+  weaponSkins: WeaponSkinId[];
+  equippedWeaponSkin: WeaponSkinId | null;
+  avatarCustomizationUnlocked: boolean;
+  avatarColors: AvatarColors;
   loot: LootInventory;
   redeemedCodes: string[];
   racingUnlocked: boolean;
@@ -165,6 +189,10 @@ let state: Progress = {
   equippedHat: null,
   equippedPants: null,
   equippedBoots: null,
+  weaponSkins: [],
+  equippedWeaponSkin: null,
+  avatarCustomizationUnlocked: false,
+  avatarColors: DEFAULT_AVATAR_COLORS,
   loot: structuredClone(EMPTY_LOOT_INVENTORY),
   redeemedCodes: [],
   racingUnlocked: false,
@@ -188,11 +216,19 @@ function loadGuest(): Progress {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
-      const p = JSON.parse(raw) as Partial<Progress>;
+      const p = JSON.parse(raw) as Partial<Progress> & {
+        avatarSkinTone?: unknown;
+        avatarHairColor?: unknown;
+      };
       const weapons = (p.weapons ?? []).filter(isWeaponId);
       if (!weapons.includes(STARTER_WEAPON)) weapons.unshift(STARTER_WEAPON);
       const level = Math.max(1, Math.floor(Number(p.level) || 1));
       const xp = addExperience({ level, experience: 0 }, Math.max(0, Math.floor(Number(p.experience) || 0)));
+      const legacyAvatarColors = {
+        ...DEFAULT_AVATAR_COLORS,
+        ...(typeof p.avatarSkinTone === "string" ? { headColor: p.avatarSkinTone } : {}),
+        ...(typeof p.avatarHairColor === "string" ? { hairColor: p.avatarHairColor } : {}),
+      };
       return {
         kind: "guest",
         name: p.name ?? guestName(),
@@ -213,6 +249,16 @@ function loadGuest(): Progress {
         equippedBoots: isCosmeticId(String(p.equippedBoots))
           ? (p.equippedBoots as CosmeticId)
           : null,
+        weaponSkins: [...new Set((p.weaponSkins ?? []).filter(isWeaponSkinId))],
+        equippedWeaponSkin: isWeaponSkinId(String(p.equippedWeaponSkin))
+          ? (p.equippedWeaponSkin as WeaponSkinId)
+          : null,
+        avatarCustomizationUnlocked: p.avatarCustomizationUnlocked === true,
+        avatarColors: isAvatarColors(p.avatarColors)
+          ? p.avatarColors
+          : isAvatarColors(legacyAvatarColors)
+            ? legacyAvatarColors
+            : DEFAULT_AVATAR_COLORS,
         loot: loadLoot(lootStorageKey),
         redeemedCodes: loadRedeemedCodes(),
         racingUnlocked: loadRedeemedCodes().includes("GUNRACE"),
@@ -238,6 +284,10 @@ function loadGuest(): Progress {
     equippedHat: null,
     equippedPants: null,
     equippedBoots: null,
+    weaponSkins: [],
+    equippedWeaponSkin: null,
+    avatarCustomizationUnlocked: false,
+    avatarColors: DEFAULT_AVATAR_COLORS,
     loot: loadLoot(lootStorageKey),
     redeemedCodes: loadRedeemedCodes(),
     racingUnlocked: loadRedeemedCodes().includes("GUNRACE"),
@@ -265,6 +315,10 @@ function saveGuest(p: Progress) {
       equippedHat: p.equippedHat,
       equippedPants: p.equippedPants,
       equippedBoots: p.equippedBoots,
+      weaponSkins: p.weaponSkins,
+      equippedWeaponSkin: p.equippedWeaponSkin,
+      avatarCustomizationUnlocked: p.avatarCustomizationUnlocked,
+      avatarColors: p.avatarColors,
     }),
   );
 }
@@ -309,6 +363,16 @@ export async function initProgress(): Promise<void> {
           typeof profile.equippedBoots === "string" && isCosmeticId(profile.equippedBoots)
             ? profile.equippedBoots
             : null,
+        weaponSkins: profile.weaponSkins.filter(isWeaponSkinId),
+        equippedWeaponSkin:
+          typeof profile.equippedWeaponSkin === "string" &&
+          isWeaponSkinId(profile.equippedWeaponSkin)
+            ? profile.equippedWeaponSkin
+            : null,
+        avatarCustomizationUnlocked: profile.avatarCustomizationUnlocked,
+        avatarColors: isAvatarColors(profile.avatarColors)
+          ? profile.avatarColors
+          : DEFAULT_AVATAR_COLORS,
         loot: loadLoot(lootStorageKey),
         redeemedCodes: loadRedeemedCodes(),
         racingUnlocked: loadRedeemedCodes().includes("GUNRACE"),
@@ -344,7 +408,8 @@ async function maybeImportGuest() {
       (Number(p.enemiesKilled) || 0) > 0 ||
       (Number(p.deaths) || 0) > 0 ||
       (p.weapons?.length ?? 0) > 1 ||
-      (p.cosmetics?.length ?? 0) > 0;
+      (p.cosmetics?.length ?? 0) > 0 ||
+      (p.weaponSkins?.length ?? 0) > 0;
     if (!hasStuff) {
       localStorage.setItem(IMPORT_KEY, "1");
       return;
@@ -361,6 +426,11 @@ async function maybeImportGuest() {
         deaths: Math.max(0, Math.floor(Number(p.deaths) || 0)),
         weapons: (p.weapons ?? []).filter(isWeaponId),
         cosmetics: (p.cosmetics ?? []).filter(isCosmeticId),
+        weaponSkins: (p.weaponSkins ?? []).filter(isWeaponSkinId),
+        equippedWeaponSkin:
+          typeof p.equippedWeaponSkin === "string" && isWeaponSkinId(p.equippedWeaponSkin)
+            ? p.equippedWeaponSkin
+            : null,
       },
     });
     state = {
@@ -374,6 +444,11 @@ async function maybeImportGuest() {
       deaths: res.deaths,
       weapons: [...new Set([...state.weapons, ...res.weapons])],
       cosmetics: [...new Set([...state.cosmetics, ...res.cosmetics])],
+      weaponSkins: res.weaponSkins.filter(isWeaponSkinId),
+      equippedWeaponSkin:
+        res.equippedWeaponSkin && isWeaponSkinId(res.equippedWeaponSkin)
+          ? res.equippedWeaponSkin
+          : state.equippedWeaponSkin,
     };
     notify();
   } finally {
@@ -549,6 +624,117 @@ export async function setEquippedCosmetic(slot: CosmeticSlot, id: CosmeticId | n
   notify();
 }
 
+export async function openWeaponCrate(rarity: WeaponSkinRarity): Promise<{
+  skinId: WeaponSkinId | null;
+  refunded: boolean;
+}> {
+  const crate = WEAPON_CRATES.find((item) => item.rarity === rarity);
+  if (!crate) throw new Error("Unknown crate rarity");
+  if (state.credits < crate.price) {
+    throw new Error(`Need ${crate.price - state.credits} more credits`);
+  }
+
+  if (state.kind === "account") {
+    const result = await openWeaponCrateForAccount({ data: { rarity } });
+    const skinId =
+      typeof result.skinId === "string" && isWeaponSkinId(result.skinId)
+        ? result.skinId
+        : null;
+    state = {
+      ...state,
+      credits: result.credits,
+      weaponSkins: skinId
+        ? [...new Set([...state.weaponSkins, skinId])]
+        : state.weaponSkins,
+    };
+    notify();
+    return { skinId, refunded: result.refunded };
+  }
+
+  const availableSkins = WEAPON_SKINS.filter(
+    (skin) => skin.rarity === rarity && !state.weaponSkins.includes(skin.id),
+  );
+  if (availableSkins.length === 0) return { skinId: null, refunded: true };
+
+  const skinId = rollWeaponSkin(rarity, Math.random, state.weaponSkins);
+  state = {
+    ...state,
+    credits: state.credits - crate.price,
+    weaponSkins: [...state.weaponSkins, skinId],
+  };
+  saveGuest(state);
+  notify();
+  return { skinId, refunded: false };
+}
+
+export async function spinLottery(): Promise<number> {
+  if (state.credits < LOTTERY_PRICE) {
+    throw new Error(`Need ${LOTTERY_PRICE - state.credits} more credits`);
+  }
+  if (state.kind === "account") {
+    const result = await spinCreditLottery();
+    state = { ...state, credits: result.credits };
+    notify();
+    return result.prize;
+  }
+
+  const prize = rollLottery();
+  state = { ...state, credits: state.credits - LOTTERY_PRICE + prize };
+  saveGuest(state);
+  notify();
+  return prize;
+}
+
+export async function equipWeaponSkin(skinId: WeaponSkinId | null): Promise<void> {
+  if (skinId && !state.weaponSkins.includes(skinId)) {
+    throw new Error("You don't own that weapon skin");
+  }
+  if (state.kind === "account") {
+    await equipWeaponSkinForAccount({ data: { skinId } });
+  }
+  state = { ...state, equippedWeaponSkin: skinId };
+  if (state.kind === "guest") saveGuest(state);
+  notify();
+}
+
+export async function unlockAvatarCustomization(): Promise<void> {
+  if (state.avatarCustomizationUnlocked) return;
+  if (state.credits < 1000) {
+    throw new Error(`Need ${1000 - state.credits} more credits`);
+  }
+  if (state.kind === "account") {
+    const result = await unlockAvatarCustomizationForAccount();
+    state = {
+      ...state,
+      credits: result.credits,
+      avatarCustomizationUnlocked: result.unlocked,
+    };
+  } else {
+    state = {
+      ...state,
+      credits: state.credits - 1000,
+      avatarCustomizationUnlocked: true,
+    };
+    saveGuest(state);
+  }
+  notify();
+}
+
+export async function customizeAvatar(
+  colors: AvatarColors,
+): Promise<void> {
+  if (!state.avatarCustomizationUnlocked) {
+    throw new Error("Unlock avatar customization before changing your colors");
+  }
+  if (!isAvatarColors(colors)) {
+    throw new Error("Choose colors from the available palettes");
+  }
+  if (state.kind === "account") await saveAvatarColors({ data: colors });
+  state = { ...state, avatarColors: colors };
+  if (state.kind === "guest") saveGuest(state);
+  notify();
+}
+
 export async function setName(name: string): Promise<void> {
   const clean = name.trim().slice(0, 24) || state.name;
   if (state.kind === "account") {
@@ -698,7 +884,7 @@ export function enchantDungeonItem(itemId: string, enchantmentId: string): void 
 }
 
 export function redeemCode(input: string): { code: string; reward: string } {
-  const code = input.trim().toUpper();
+  const code = input.trim().toUpperCase();
   if (state.redeemedCodes.includes(code)) throw new Error("That code has already been redeemed");
   if (code === "FREEMONEY") {
     state = { ...state, credits: state.credits + 500, redeemedCodes: [...state.redeemedCodes, code] };
@@ -716,7 +902,7 @@ export function redeemCode(input: string): { code: string; reward: string } {
     saveRedeemedCodes(state.redeemedCodes);
     if (state.kind === "guest") saveGuest(state);
     notify();
-    return { code, reward: "Gun Racing mode unlocked" };
+    return { code, reward: "Car race code redeemed" };
   }
   throw new Error("Unknown code");
 }

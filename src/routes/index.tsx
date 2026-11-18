@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 import { TopBar } from "@/components/game/TopBar";
 import { useProgress } from "@/components/game/useProgress";
 import { WEAPONS } from "@/game/sim/weapons";
-import { DIFFICULTIES } from "@/game/sim/waves";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -28,6 +27,13 @@ export const Route = createFileRoute("/")({
 
 const MODES = [
   {
+    to: "/racing",
+    title: "3D CAR RACE",
+    sub: "Drive, steer, boost and collect coins.",
+    tag: "PLAY NOW",
+    color: "var(--primary)",
+  },
+  {
     to: "/play",
     title: "DUNGEON",
     sub: "Survive waves. Earn credits.",
@@ -47,13 +53,6 @@ const MODES = [
     sub: "Moving dummies. Sharpen your aim.",
     tag: "PRACTICE",
     color: "var(--accent)",
-  },
-  {
-    to: "/vehicles",
-    title: "VEHICLES",
-    sub: "Street cars and motorbikes.",
-    tag: "NEW",
-    color: "var(--primary)",
   },
   {
     to: "/cooking",
@@ -83,13 +82,12 @@ function Hub() {
               <span>STANDOF</span>
             </h1>
             <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-              Clear five dungeon waves for credits and XP — {DIFFICULTIES.easy.creditsPerWave} credits per wave on Easy,{" "}
-              {DIFFICULTIES.normal.creditsPerWave} on Normal, {DIFFICULTIES.hard.creditsPerWave} on
-              Hard. Gear up in the Armory, then call out a friend.
+              Take the wheel in the 3D car race, then explore the FPS arenas, earn XP, gear up,
+              and challenge a friend.
             </p>
             <div className="mt-2 flex flex-wrap gap-3">
-              <Link to="/play" className="mso-btn hub-primary-action">
-                <span>DEPLOY</span>
+              <Link to="/racing" className="mso-btn hub-primary-action">
+                <span>START 3D RACE</span>
                 <span aria-hidden="true">↗</span>
               </Link>
               <Link to="/profile" className="mso-btn mso-btn-ghost">
@@ -136,24 +134,6 @@ function Hub() {
               </div>
             </Link>
           ))}
-          {p.racingUnlocked && (
-            <Link
-              to="/racing"
-              className="mso-card hub-mode-card group"
-              style={{ "--mode-color": "var(--mso-foe)" } as CSSProperties}
-            >
-              <div className="hub-mode-top">
-                <span className="hub-mode-tag">ARCADE</span>
-                <span className="hub-mode-arrow" aria-hidden="true">↗</span>
-              </div>
-              <div className="mso-display mt-8 text-3xl">GUN RACING</div>
-              <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Drift, boost and take down rival cars.
-              </div>
-              <div className="hub-mode-rule" />
-              <div className="hub-mode-cta">ENTER MODE <span aria-hidden="true">→</span></div>
-            </Link>
-          )}
         </section>
 
         <section className="mt-4 grid gap-4 md:grid-cols-2" aria-label="Loadout and maps">

@@ -6,8 +6,19 @@ import { ExperienceBar } from "@/components/game/ExperienceBar";
 import { PageShell } from "@/components/game/Picker";
 import { TopBar } from "@/components/game/TopBar";
 import { useProgress } from "@/components/game/useProgress";
-import { buyCosmetic, setEquippedCosmetic } from "@/game/progress";
+import {
+  buyCosmetic,
+  customizeAvatar,
+  setEquippedCosmetic,
+  unlockAvatarCustomization,
+} from "@/game/progress";
 import { COSMETICS, type CosmeticId, type CosmeticSlot } from "@/game/sim/cosmetics";
+import {
+  AVATAR_COLOR_OPTIONS,
+  randomizeAvatarColors,
+  type AvatarColorKey,
+  type AvatarColors,
+} from "@/game/sim/avatar";
 import { experienceRequiredForLevel } from "@/game/sim/progression";
 import { searchPlayers } from "@/game/profile.functions";
 
@@ -27,7 +38,7 @@ export const Route = createFileRoute("/profile")({
       { title: "Player Profile — Mexican Standof" },
       {
         name: "description",
-        content: "View your player level and customize your character with earned credits.",
+        content: "View your player stats, customize outfits, and unlock block-style avatar colors.",
       },
     ],
   }),
@@ -37,6 +48,7 @@ export const Route = createFileRoute("/profile")({
 function ProfilePage() {
   const progress = useProgress();
   const [slot, setSlot] = useState<CosmeticSlot>("shirt");
+  const [shopTab, setShopTab] = useState<"outfits" | "skin">("outfits");
   const [busy, setBusy] = useState<string | null>(null);
   const [playerQuery, setPlayerQuery] = useState("");
   const [players, setPlayers] = useState<PlayerSearchResult[]>([]);
@@ -78,6 +90,42 @@ function ProfilePage() {
     }
   }
 
+  async function unlockBlockStyle() {
+    setBusy("avatar-customization");
+    try {
+      await unlockAvatarCustomization();
+      toast.success("Block-style avatar customization unlocked");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not unlock customization");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeAvatarColors(colors: AvatarColors) {
+    setBusy("avatar-colors");
+    try {
+      await customizeAvatar(colors);
+      toast.success("Avatar updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update avatar");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const colorSlots: { key: AvatarColorKey; label: string }[] = [
+    { key: "headColor", label: "HEAD" },
+    { key: "hairColor", label: "HAIR" },
+    { key: "bodyColor", label: "BODY" },
+    { key: "feetColor", label: "FEET" },
+    { key: "bootsColor", label: "BOOTS" },
+    { key: "accessoriesColor", label: "ACCESSORIES" },
+    { key: "maskColor", label: "MASK" },
+    { key: "hatColor", label: "HAT" },
+    { key: "dressColor", label: "DRESS" },
+  ];
+
   const equippedBySlot = {
     shirt: progress.equippedShirt,
     hat: progress.equippedHat,
@@ -98,6 +146,9 @@ function ProfilePage() {
                 pantsId={progress.equippedPants}
                 bootsId={progress.equippedBoots}
                 weaponId={progress.equipped}
+                avatarColors={progress.avatarCustomizationUnlocked ? progress.avatarColors : undefined}
+                weaponSkinId={progress.equippedWeaponSkin}
+                fireEffect
                 rotatable
               />
             </div>
@@ -146,6 +197,8 @@ function ProfilePage() {
                 hatId={progress.equippedHat}
                 pantsId={progress.equippedPants}
                 bootsId={progress.equippedBoots}
+                avatarColors={progress.avatarCustomizationUnlocked ? progress.avatarColors : undefined}
+                weaponSkinId={progress.equippedWeaponSkin}
               />
               <div>
                 <div className="hub-info-kicker">CUSTOMIZATION SHOP</div>
@@ -160,88 +213,205 @@ function ProfilePage() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2">
-              {(["shirt", "hat", "pants", "boots"] as const).map((value) => (
+            <div
+              className="mt-6 flex flex-wrap gap-2"
+              role="tablist"
+              aria-label="Profile customization"
+            >
+              {(["outfits", "skin"] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
-                  className={`mso-btn ${slot === value ? "" : "mso-btn-ghost"}`}
-                  aria-pressed={slot === value}
-                  onClick={() => setSlot(value)}
+                  className={`mso-btn ${shopTab === value ? "" : "mso-btn-ghost"}`}
+                  role="tab"
+                  id={`${value}-tab`}
+                  aria-controls={`${value}-panel`}
+                  aria-selected={shopTab === value}
+                  onClick={() => setShopTab(value)}
                 >
-                  {value === "shirt"
-                    ? "SHIRTS & OUTFITS"
-                    : value === "hat"
-                      ? "HEADWEAR"
-                      : value.toUpperCase()}
+                  {value === "outfits" ? "OUTFITS" : "SKIN"}
                 </button>
               ))}
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {COSMETICS.filter((item) => item.slot === slot).map((item) => {
-                const owned = progress.cosmetics.includes(item.id);
-                const equipped = equippedBySlot[item.slot] === item.id;
-                const insufficient = !owned && progress.credits < item.price;
-                return (
-                  <article
-                    key={item.id}
-                    className={`mso-card flex flex-col gap-4 p-5 ${equipped ? "mso-sel" : ""}`}
-                  >
-                    <div className="flex items-start gap-4">
-                      <CharacterPreview
-                        compact
-                        shirtId={item.slot === "shirt" ? item.id : progress.equippedShirt}
-                        hatId={item.slot === "hat" ? item.id : progress.equippedHat}
-                        pantsId={item.slot === "pants" ? item.id : progress.equippedPants}
-                        bootsId={item.slot === "boots" ? item.id : progress.equippedBoots}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <h3 className="mso-display text-xl">{item.name}</h3>
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                          {item.slot} · {item.style}
-                        </p>
-                      </div>
-                      <div
-                        className={`mso-chip text-sm ${equipped ? "cosmetic-equipped-badge" : ""}`}
-                      >
-                        {equipped ? (
-                          "EQUIPPED"
-                        ) : owned ? (
-                          "OWNED"
-                        ) : (
-                          <>
-                            <span className="mso-coin" />
-                            {item.price}
-                          </>
-                        )}
-                      </div>
-                    </div>
+            {shopTab === "outfits" ? (
+              <div id="outfits-panel" role="tabpanel" aria-labelledby="outfits-tab">
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(["shirt", "hat", "pants", "boots"] as const).map((value) => (
                     <button
+                      key={value}
                       type="button"
-                      className={`mso-btn mt-auto ${owned ? "mso-btn-ghost" : ""}`}
-                      disabled={
-                        busy !== null ||
-                        progress.kind === "loading" ||
-                        equipped ||
-                        (!owned && insufficient)
-                      }
-                      onClick={() =>
-                        owned ? void equip(item.slot, item.id) : void purchase(item.id)
-                      }
+                      className={`mso-btn ${slot === value ? "" : "mso-btn-ghost"}`}
+                      aria-pressed={slot === value}
+                      onClick={() => setSlot(value)}
                     >
-                      {equipped
-                        ? "EQUIPPED"
-                        : owned
-                          ? "EQUIP"
-                          : insufficient
-                            ? `NEED ${item.price - progress.credits} MORE`
-                            : "BUY"}
+                      {value === "shirt"
+                        ? "SHIRTS & OUTFITS"
+                        : value === "hat"
+                          ? "HEADWEAR"
+                          : value.toUpperCase()}
                     </button>
-                  </article>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {COSMETICS.filter((item) => item.slot === slot).map((item) => {
+                    const owned = progress.cosmetics.includes(item.id);
+                    const equipped = equippedBySlot[item.slot] === item.id;
+                    const insufficient = !owned && progress.credits < item.price;
+                    return (
+                      <article
+                        key={item.id}
+                        className={`mso-card flex flex-col gap-4 p-5 ${equipped ? "mso-sel" : ""}`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <CharacterPreview
+                            compact
+                            shirtId={item.slot === "shirt" ? item.id : progress.equippedShirt}
+                            hatId={item.slot === "hat" ? item.id : progress.equippedHat}
+                            pantsId={item.slot === "pants" ? item.id : progress.equippedPants}
+                            bootsId={item.slot === "boots" ? item.id : progress.equippedBoots}
+                            avatarColors={
+                              progress.avatarCustomizationUnlocked
+                                ? progress.avatarColors
+                                : undefined
+                            }
+                          />
+                          <div className="min-w-0 flex-1">
+                            <h3 className="mso-display text-xl">{item.name}</h3>
+                            <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                              {item.slot} · {item.style}
+                            </p>
+                          </div>
+                          <div
+                            className={`mso-chip text-sm ${equipped ? "cosmetic-equipped-badge" : ""}`}
+                          >
+                            {equipped ? (
+                              "EQUIPPED"
+                            ) : owned ? (
+                              "OWNED"
+                            ) : (
+                              <>
+                                <span className="mso-coin" />
+                                {item.price}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className={`mso-btn mt-auto ${owned ? "mso-btn-ghost" : ""}`}
+                          disabled={
+                            busy !== null ||
+                            progress.kind === "loading" ||
+                            equipped ||
+                            (!owned && insufficient)
+                          }
+                          onClick={() =>
+                            owned ? void equip(item.slot, item.id) : void purchase(item.id)
+                          }
+                        >
+                          {equipped
+                            ? "EQUIPPED"
+                            : owned
+                              ? "EQUIP"
+                              : insufficient
+                                ? `NEED ${item.price - progress.credits} MORE`
+                                : "BUY"}
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div
+                id="skin-panel"
+                role="tabpanel"
+                aria-labelledby="skin-tab"
+                className="profile-skin-studio mt-5"
+              >
+                <div className="profile-skin-preview">
+                  <CharacterPreview
+                    compact
+                    shirtId={progress.equippedShirt}
+                    hatId={progress.equippedHat}
+                    pantsId={progress.equippedPants}
+                    bootsId={progress.equippedBoots}
+                    avatarColors={
+                      progress.avatarCustomizationUnlocked ? progress.avatarColors : undefined
+                    }
+                    fireEffect
+                  />
+                </div>
+                <div className="profile-skin-controls">
+                  <div className="hub-info-kicker">BLOCK-STYLE SKIN STUDIO</div>
+                  <h3 className="mso-display mt-1 text-2xl">YOUR COLORS, YOUR OPERATOR</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Choose colors for every part of your character. Randomize for a fresh look.
+                  </p>
+                  {!progress.avatarCustomizationUnlocked ? (
+                    <>
+                      {progress.kind !== "account" && (
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          Sign in to save your skin and unlock the studio.
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className="mso-btn mt-4"
+                        disabled={
+                          progress.kind !== "account" || progress.credits < 1000 || busy !== null
+                        }
+                        onClick={() => void unlockBlockStyle()}
+                      >
+                        {progress.kind !== "account"
+                          ? "SIGN IN TO UNLOCK"
+                          : progress.credits < 1000
+                            ? `NEED ${1000 - progress.credits} MORE COINS`
+                            : "UNLOCK SKIN STUDIO · 1,000 COINS"}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="mso-btn mt-4"
+                        disabled={busy !== null}
+                        onClick={() => void changeAvatarColors(randomizeAvatarColors())}
+                      >
+                        RANDOMIZE SKIN
+                      </button>
+                      <div className="avatar-palette mt-5">
+                        {colorSlots.map(({ key, label }) => (
+                          <div key={key} className="avatar-palette-row">
+                            <span className="avatar-palette-label">{label}</span>
+                            <div className="avatar-color-options">
+                              {AVATAR_COLOR_OPTIONS.map((color) => (
+                                <button
+                                  key={`${key}-${color}`}
+                                  type="button"
+                                  className={`avatar-color-option${progress.avatarColors[key] === color ? " is-selected" : ""}`}
+                                  style={{ backgroundColor: color }}
+                                  aria-label={`Set ${label.toLowerCase()} color ${color}`}
+                                  aria-pressed={progress.avatarColors[key] === color}
+                                  disabled={busy !== null}
+                                  onClick={() =>
+                                    void changeAvatarColors({
+                                      ...progress.avatarColors,
+                                      [key]: color,
+                                    })
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         </div>
         <section className="player-directory mso-panel">

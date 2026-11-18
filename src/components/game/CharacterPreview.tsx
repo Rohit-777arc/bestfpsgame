@@ -5,6 +5,8 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import * as THREE from "three";
 import { getCosmetic } from "@/game/sim/cosmetics";
+import { getWeaponSkin, type WeaponSkinId } from "@/game/sim/gacha";
+import type { AvatarColors } from "@/game/sim/avatar";
 import { WEAPONS, type WeaponId } from "@/game/sim/weapons";
 
 export function CharacterPreview({
@@ -15,6 +17,9 @@ export function CharacterPreview({
   compact = false,
   rotatable = false,
   weaponId = "scout-pistol",
+  avatarColors,
+  weaponSkinId = null,
+  fireEffect = false,
 }: {
   shirtId: string | null;
   hatId: string | null;
@@ -23,6 +28,9 @@ export function CharacterPreview({
   compact?: boolean;
   rotatable?: boolean;
   weaponId?: WeaponId;
+  avatarColors?: AvatarColors | undefined;
+  weaponSkinId?: WeaponSkinId | null | undefined;
+  fireEffect?: boolean;
 }) {
   const previewId = useId();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -37,10 +45,14 @@ export function CharacterPreview({
   const hat = getCosmetic(hatId);
   const pants = getCosmetic(pantsId);
   const boots = getCosmetic(bootsId);
-  const shirtColor = shirt?.color ?? "#53677a";
-  const hatColor = hat?.color ?? "#394554";
-  const pantsColor = pants?.color ?? "#34383b";
-  const bootsColor = boots?.color ?? "#22272a";
+  const weaponSkin = getWeaponSkin(weaponSkinId);
+  const shirtColor = avatarColors?.dressColor ?? shirt?.color ?? "#53677a";
+  const bodyColor = avatarColors?.bodyColor ?? shirtColor;
+  const hatColor = avatarColors?.hatColor ?? hat?.color ?? "#394554";
+  const pantsColor = avatarColors?.feetColor ?? pants?.color ?? "#34383b";
+  const bootsColor = avatarColors?.bootsColor ?? boots?.color ?? "#22272a";
+  const skinTone = avatarColors?.headColor ?? "#c8a77a";
+  const hairColor = avatarColors?.hairColor ?? "#382c2a";
 
   if (rotatable) {
     return (
@@ -61,15 +73,23 @@ export function CharacterPreview({
           <color attach="background" args={["#17242b"]} />
           <ambientLight intensity={1.5} />
           <directionalLight position={[3, 6, 4]} intensity={3} castShadow />
-          <pointLight position={[-3, 2, -3]} intensity={18} color="#80ff20" />
+          <pointLight position={[-3, 2, -3]} intensity={18} color="#ff6a1a" />
+          {fireEffect && <pointLight position={[0, 0.3, 0]} intensity={2.2} color="#ff3a12" distance={3} />}
           <BlockyOperator
             shirtColor={shirtColor}
+            bodyColor={bodyColor}
             hatColor={hatColor}
             pantsColor={pantsColor}
             bootsColor={bootsColor}
+            accessoriesColor={avatarColors?.accessoriesColor}
+            maskColor={avatarColors?.maskColor}
             hatStyle={hat?.style}
             shirtStyle={shirt?.style}
+            skinTone={skinTone}
+            hairColor={hairColor}
+            weaponSkinColor={weaponSkin?.color}
             weaponId={weaponId}
+            fireEffect={fireEffect}
           />
           <mesh rotation-x={-Math.PI / 2} position-y={-0.03} receiveShadow>
             <circleGeometry args={[1.25, 48]} />
@@ -122,6 +142,7 @@ export function CharacterPreview({
       <path d="M58 148h64l12 65h-28l-9-42-10 42H48z" fill={pantsColor} />
       <path d="M49 204h34v11H45zm43 0h34v11H91z" fill={bootsColor} />
       <path d="M25 213c3-39 24-64 65-64s62 25 65 64" fill={shirtColor} />
+      {avatarColors && <path d="m70 157 20 8 20-8v39H70z" fill={bodyColor} />}
       {shirt?.style === "coat" && (
         <path d="m75 152 15 23 15-23 13 61H62z" fill="#d5aa73" opacity=".8" />
       )}
@@ -155,11 +176,12 @@ export function CharacterPreview({
       {shirt?.style === "cloak" && (
         <path d="m69 154 21 9 21-9 22 59H47z" fill="#292438" opacity=".62" />
       )}
-      <path d="M79 122h22v32H79z" fill="#b88765" />
-      <ellipse cx="90" cy="94" rx="39" ry="45" fill="#d3aa83" />
+      <path d="M79 122h22v32H79z" fill={skinTone} />
+      <ellipse cx="90" cy="94" rx="39" ry="45" fill={skinTone} />
+      {avatarColors && <path d="M56 100h68v17H56z" fill={avatarColors.maskColor} />}
       <path
         d="M52 91c0-37 18-55 42-55 27 0 41 21 38 56-8-15-21-19-34-22-17-4-30 2-46 21Z"
-        fill="#382c2a"
+        fill={hairColor}
       />
       <g className="profile-moving-eyes">
         <ellipse cx="74" cy="95" rx="5" ry="7" fill="#f2e6d2" />
@@ -183,6 +205,9 @@ export function CharacterPreview({
       {hat?.style === "helmet" && (
         <path d="M47 70c0-31 16-49 43-49s43 18 43 49H47Zm-4 5h94v9H43z" fill={hatColor} />
       )}
+      {avatarColors && !hat && (
+        <path d="M49 66c4-26 20-40 42-40s38 14 42 40H49z" fill={hatColor} />
+      )}
       <path d="m48 173 17-11m67 11-17-11" stroke="oklch(1 0 0 / .2)" strokeWidth="2" />
     </svg>
   );
@@ -190,20 +215,34 @@ export function CharacterPreview({
 
 function BlockyOperator({
   shirtColor,
+  bodyColor,
   hatColor,
   pantsColor,
   bootsColor,
+  accessoriesColor,
+  maskColor,
   hatStyle,
   shirtStyle,
+  skinTone,
+  hairColor,
+  weaponSkinColor,
   weaponId,
+  fireEffect,
 }: {
   shirtColor: string;
+  bodyColor: string;
   hatColor: string;
   pantsColor: string;
   bootsColor: string;
+  accessoriesColor?: string | undefined;
+  maskColor?: string | undefined;
   hatStyle?: string | undefined;
   shirtStyle?: string | undefined;
+  skinTone: string;
+  hairColor: string;
+  weaponSkinColor?: string | undefined;
   weaponId: WeaponId;
+  fireEffect: boolean;
 }) {
   const body = useRef<THREE.Group>(null);
   const leftArm = useRef<THREE.Group>(null);
@@ -212,6 +251,7 @@ function BlockyOperator({
   const rightLeg = useRef<THREE.Group>(null);
   const leftEye = useRef<THREE.Mesh>(null);
   const rightEye = useRef<THREE.Mesh>(null);
+  const fire = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
     const time = clock.elapsedTime;
     if (body.current) body.current.position.y = 0.03 + Math.sin(time * 1.7) * 0.025;
@@ -223,9 +263,14 @@ function BlockyOperator({
     const eyeY = Math.max(-0.012, Math.min(0.012, Math.cos(time * 0.9) * 0.012));
     if (leftEye.current) leftEye.current.position.set(-0.17 + eyeX, 1.9 + eyeY, 0.29);
     if (rightEye.current) rightEye.current.position.set(0.17 + eyeX, 1.9 + eyeY, 0.29);
+    if (fire.current) {
+      fire.current.rotation.y = time * 0.45;
+      fire.current.scale.setScalar(1 + Math.sin(time * 4) * 0.035);
+    }
   });
   const weapon = WEAPONS[weaponId];
-  const skin = "#c8a77a";
+  const skin = skinTone;
+  const hasCustomAvatar = accessoriesColor !== undefined;
   const dark = new THREE.Color(shirtColor).multiplyScalar(0.55).getStyle();
   return (
     <group ref={body} position-y={0.03}>
@@ -237,6 +282,18 @@ function BlockyOperator({
         <boxGeometry args={[0.72, 0.78, 0.42]} />
         <meshStandardMaterial color={shirtColor} roughness={0.78} />
       </mesh>
+      {hasCustomAvatar && (
+        <>
+          <mesh position={[-0.45, 1.55, 0]}>
+            <boxGeometry args={[0.13, 0.12, 0.25]} />
+            <meshStandardMaterial color={accessoriesColor} metalness={0.55} />
+          </mesh>
+          <mesh position={[0.45, 1.55, 0]}>
+            <boxGeometry args={[0.13, 0.12, 0.25]} />
+            <meshStandardMaterial color={accessoriesColor} metalness={0.55} />
+          </mesh>
+        </>
+      )}
       {shirtStyle === "armor" && (
         <>
           <mesh position={[0, 1.28, 0.22]}>
@@ -305,9 +362,15 @@ function BlockyOperator({
         <boxGeometry args={[0.58, 0.58, 0.54]} />
         <meshStandardMaterial color={skin} roughness={0.9} />
       </mesh>
+      {maskColor && (
+        <mesh position={[0, 1.82, 0.29]}>
+          <boxGeometry args={[0.46, 0.18, 0.075]} />
+          <meshStandardMaterial color={maskColor} roughness={0.7} />
+        </mesh>
+      )}
       <mesh position={[0, 2.12, 0]}>
         <boxGeometry args={[0.6, 0.16, 0.56]} />
-        <meshStandardMaterial color="#382c2a" />
+        <meshStandardMaterial color={hairColor} />
       </mesh>
       <mesh ref={leftEye} position={[-0.17, 1.9, 0.29]}>
         <boxGeometry args={[0.08, 0.09, 0.025]} />
@@ -325,7 +388,7 @@ function BlockyOperator({
         <boxGeometry args={[0.09, 0.045, 0.025]} />
         <meshStandardMaterial color="#f0d7b6" />
       </mesh>
-      {hatStyle === "helmet" && (
+      {(hatStyle === "helmet" || (hatStyle === undefined && accessoriesColor !== undefined)) && (
         <mesh position={[0, 2.2, 0]}>
           <boxGeometry args={[0.72, 0.2, 0.68]} />
           <meshStandardMaterial color={hatColor} metalness={0.3} roughness={0.55} />
@@ -342,7 +405,7 @@ function BlockyOperator({
           <group ref={side < 0 ? leftArm : rightArm} position={[side * 0.45, 1.58, 0]}>
             <mesh position={[0, -0.35, 0]} castShadow>
               <boxGeometry args={[0.2, 0.7, 0.22]} />
-              <meshStandardMaterial color={shirtColor} />
+              <meshStandardMaterial color={bodyColor} />
             </mesh>
             <mesh position={[0, -0.72, 0]} castShadow>
               <boxGeometry args={[0.2, 0.14, 0.22]} />
@@ -361,10 +424,36 @@ function BlockyOperator({
           </group>
         </group>
       ))}
+      {fireEffect && (
+        <group ref={fire} position-y={0.05}>
+          <mesh rotation-x={Math.PI / 2}>
+            <torusGeometry args={[0.48, 0.055, 8, 32]} />
+            <meshBasicMaterial color="#ff3b18" transparent opacity={0.72} />
+          </mesh>
+          {Array.from({ length: 8 }, (_, index) => {
+            const angle = (index / 8) * Math.PI * 2;
+            return (
+              <mesh
+                key={index}
+                position={[Math.cos(angle) * 0.44, 0.24 + (index % 2) * 0.07, Math.sin(angle) * 0.44]}
+                rotation-z={Math.cos(angle) * -0.2}
+                rotation-x={Math.sin(angle) * 0.2}
+              >
+                <coneGeometry args={[0.12, 0.52, 5]} />
+                <meshBasicMaterial
+                  color={index % 2 ? "#ff741a" : "#f53618"}
+                  transparent
+                  opacity={0.8}
+                />
+              </mesh>
+            );
+          })}
+        </group>
+      )}
       <group position={[0.55, 1.03, 0.32]} rotation-x={-0.12}>
         <mesh castShadow>
           <boxGeometry args={[0.16, 0.16, 0.52]} />
-          <meshStandardMaterial color="#343a40" metalness={0.65} roughness={0.4} />
+          <meshStandardMaterial color={weaponSkinColor ?? "#343a40"} metalness={0.65} roughness={0.4} />
         </mesh>
         <mesh position={[0, 0.015, 0.31]}>
           <boxGeometry args={[0.055, 0.055, 0.25]} />

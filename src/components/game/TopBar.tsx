@@ -5,14 +5,15 @@ import { AccountDialog } from "./AccountDialog";
 import { signOut } from "@/game/progress";
 
 const NAV = [
+  { to: "/racing", label: "3D Car Race" },
   { to: "/play", label: "Dungeon" },
   { to: "/profile", label: "Profile" },
   { to: "/train", label: "Training" },
   { to: "/co-op", label: "Co-op & 1v1" },
-  { to: "/vehicles", label: "Vehicles" },
   { to: "/cooking", label: "Cooking" },
   { to: "/armory", label: "Armory" },
   { to: "/maps", label: "Maps" },
+  { to: "/about", label: "About" },
 ] as const;
 
 export function TopBar() {
@@ -30,7 +31,7 @@ export function TopBar() {
           </span>
         </Link>
         <nav className="site-nav flex flex-wrap gap-1" aria-label="Main navigation">
-          {[...NAV, ...(p.racingUnlocked ? [{ to: "/racing" as const, label: "Gun Racing" }] : [])].map((n) => (
+          {NAV.map((n) => (
             <Link
               key={n.to}
               to={n.to}

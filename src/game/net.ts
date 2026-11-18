@@ -28,7 +28,8 @@ export type NetEvent =
   | { type: "frag"; from: string; killer: string; killerName: string; victimName: string }
   | { type: "lobby"; from: string; map: string; mode: RoomMode }
   | { type: "start"; from: string; map: string; mode: RoomMode }
-  | { type: "restart"; from: string };
+  | { type: "restart"; from: string }
+  | { type: "chat"; from: string; id: string; name: string; text: string };
 
 export type RosterEntry = { id: string; name: string };
 

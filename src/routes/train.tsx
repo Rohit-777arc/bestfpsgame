@@ -50,6 +50,8 @@ function TrainPage() {
         equippedHat={p.equippedHat}
         equippedPants={p.equippedPants}
         equippedBoots={p.equippedBoots}
+        equippedWeaponSkin={p.equippedWeaponSkin}
+        avatarColors={p.avatarCustomizationUnlocked ? p.avatarColors : undefined}
         onExit={async (stats) => {
           try {
             await recordSessionStats(stats);

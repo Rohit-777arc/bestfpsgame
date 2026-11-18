@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { TopBar } from "@/components/game/TopBar";
 import { PageShell } from "@/components/game/Picker";
+import { GameChat, type GameChatMessage } from "@/components/game/GameChat";
 
 export const Route = createFileRoute("/cooking")({
   ssr: false,
@@ -24,6 +25,23 @@ function CookingPage() {
   const [order, setOrder] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<GameChatMessage[]>([]);
+
+  useEffect(() => {
+    const handleChatKey = (event: KeyboardEvent) => {
+      if (
+        event.code === "KeyT" &&
+        !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement)
+      ) {
+        event.preventDefault();
+        setChatOpen((open) => !open);
+      }
+    };
+    addEventListener("keydown", handleChatKey);
+    return () => removeEventListener("keydown", handleChatKey);
+  }, []);
 
   useEffect(() => {
     if (!running) return;
@@ -95,6 +113,18 @@ function CookingPage() {
           <button type="button" className="mso-btn mso-btn-ghost" onClick={serve} disabled={!running}>SERVE ORDER</button>
         </div>
       </PageShell>
+      <GameChat
+        open={chatOpen}
+        messages={chatMessages}
+        onSend={(text) => {
+          setChatMessages((messages) => [
+            ...messages.slice(-7),
+            { id: `${Date.now()}-${Math.random()}`, name: "YOU", text },
+          ]);
+          setChatOpen(false);
+        }}
+        onClose={() => setChatOpen(false)}
+      />
     </>
   );
 }

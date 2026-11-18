@@ -43,6 +43,13 @@
       "when": 1795000000001,
       "tag": "0005_equipped_trousers_boots",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795000000002,
+      "tag": "0006_gacha_avatar_customization",
+      "breakpoints": true
     }
   ]
 }

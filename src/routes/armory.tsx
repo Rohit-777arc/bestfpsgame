@@ -419,9 +419,9 @@ function ArmoryPage() {
                   return (
                     <article
                       key={rarity}
-                      className={`mso-card crate-card crate-rarity-${rarity}`}
+                      className={`mso-card crate-card crate-rarity-${rarity}${crateBusy === rarity ? " is-opening" : ""}`}
                     >
-                      <div className="crate-box" aria-hidden="true">◆</div>
+                      <div className="crate-box" aria-hidden="true"><span className="crate-lid" /><span className="crate-lock" /></div>
                       <div className="crate-rarity-label">{rarity.toUpperCase()}</div>
                       <p className="text-sm text-muted-foreground">{owned}/{total} unique skins</p>
                       <button
@@ -436,7 +436,9 @@ function ArmoryPage() {
                         }
                         onClick={() => void openCrate(rarity)}
                       >
-                        {owned === total
+                        {crateBusy === rarity
+                          ? "OPENING…"
+                          : owned === total
                           ? "ALL COLLECTED"
                           : p.credits < price
                             ? `NEED ${price - p.credits} MORE`
@@ -446,19 +448,19 @@ function ArmoryPage() {
                   );
                 })}
               </div>
-              {(rolling !== null || reveal) && (
-                <div className="crate-reveal mso-panel" aria-live="polite" role="status">
+              {(crateBusy !== null || reveal) && (
+                <div key={crateBusy ? `opening-${crateBusy}` : `reveal-${reveal?.name}`} className={`crate-reveal mso-panel${crateBusy ? " is-opening" : " is-revealed"}`} aria-live="polite" role="status" aria-busy={crateBusy !== null}>
                   <div
-                    className={`crate-reveal-icon${rolling !== null ? " is-rolling" : ""}`}
+                    className={`crate-reveal-icon${crateBusy !== null ? " is-rolling" : ""}`}
                     style={{ "--reveal-color": reveal?.color ?? "#80ff20" } as CSSProperties}
                   >
-                    {rolling !== null ? "◆" : reveal?.refunded ? "✓" : "✦"}
+                    {crateBusy !== null ? <div className={`crate-box crate-rarity-${crateBusy}`} aria-hidden="true"><span className="crate-lid" /><span className="crate-lock" /></div> : reveal?.refunded ? "✓" : <span className="crate-reward-swatch" style={{ backgroundColor: reveal?.color }} />}
                   </div>
                   <div className="hub-info-kicker">
-                    {rolling !== null ? "CRATE OPENING" : reveal?.rarity.toUpperCase()}
+                    {crateBusy !== null ? `${crateBusy.toUpperCase()} CRATE OPENING` : reveal?.rarity.toUpperCase()}
                   </div>
                   <strong className="mso-display text-2xl">
-                    {rolling !== null ? "ROLLING…" : reveal?.name}
+                    {crateBusy !== null ? "UNLOCKING…" : reveal?.name}
                   </strong>
                 </div>
               )}
@@ -529,7 +531,6 @@ function ArmoryPage() {
               <button className="mso-btn" type="submit" disabled={!code.trim()}>REDEEM</button>
             </form>
             <div className="codes-status">
-              <span>REDEEMED: <b>{p.redeemedCodes.length}/2</b></span>
               <a className="mso-btn" href="/racing">PLAY 3D CAR RACE</a>
             </div>
           </section>

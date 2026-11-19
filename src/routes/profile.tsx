@@ -148,7 +148,6 @@ function ProfilePage() {
                 weaponId={progress.equipped}
                 avatarColors={progress.avatarCustomizationUnlocked ? progress.avatarColors : undefined}
                 weaponSkinId={progress.equippedWeaponSkin}
-                fireEffect
                 rotatable
               />
             </div>
@@ -340,7 +339,6 @@ function ProfilePage() {
                     avatarColors={
                       progress.avatarCustomizationUnlocked ? progress.avatarColors : undefined
                     }
-                    fireEffect
                   />
                 </div>
                 <div className="profile-skin-controls">

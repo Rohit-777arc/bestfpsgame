@@ -1,10 +1,11 @@
 // Draws the arena for a map preset: sky, fog, lights, ground, walls, props.
-import { useMemo } from "react";
+import { useMemo, useEffect, type RefObject } from "react";
+import { ROOM_TABLES, ROOM_CHESTS, DOOR_Z } from "@/game/sim/underground";
 import { Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import type { MapDef } from "@/game/sim/maps";
 import { ARENA, BARRELS, CRATES, WALLS } from "@/game/sim/arena";
-import { groundTexture, crateTexture } from "./textures";
+import { dungeonTexture, groundTexture, crateTexture } from "./textures";
 
 function neonSignTexture(text: string, color: string): THREE.CanvasTexture {
   const c = document.createElement("canvas");
@@ -112,137 +113,79 @@ export function Scene({ map }: { map: MapDef }) {
   );
 }
 
-const undergroundWall = new THREE.MeshStandardMaterial({ color: "#77735b", roughness: 0.98 });
-const undergroundStone = new THREE.MeshStandardMaterial({ color: "#4b493c", roughness: 1 });
-const undergroundFloor = new THREE.MeshStandardMaterial({ color: "#383930", roughness: 0.98 });
-const undergroundTile = new THREE.MeshStandardMaterial({ color: "#676452", roughness: 0.95 });
-const oldBrass = new THREE.MeshStandardMaterial({ color: "#665336", metalness: 0.55, roughness: 0.72 });
-
-/** A cramped, repeating stone chamber with a stairwell marking the next room. */
-export function UndergroundScene({ room }: { room: number }) {
-  const half = 24;
-  const tileLines = Array.from({ length: 17 }, (_, index) => index - 8);
-  const roomTint = room % 3 === 0 ? "#514b3c" : room % 2 === 0 ? "#625d49" : "#6b6752";
-
-  return (
-    <>
-      <color attach="background" args={["#11120f"]} />
-      <fog attach="fog" args={["#171811", 9, 30]} />
-      <hemisphereLight args={["#c6c09d", "#343023", 1.15]} />
-      <ambientLight color="#d1caa0" intensity={0.72} />
-
-      <mesh position={[0, -0.32, 0]} receiveShadow userData={{ solid: true }}>
-        <boxGeometry args={[half * 2, 0.6, half * 2]} />
-        <primitive object={undergroundFloor} attach="material" />
-      </mesh>
-      {tileLines.map((line) => (
-        <group key={line}>
-          <mesh position={[line * 2, 0.002, 0]} receiveShadow>
-            <boxGeometry args={[0.035, 0.008, half * 2]} />
-            <primitive object={undergroundTile} attach="material" />
-          </mesh>
-          <mesh position={[0, 0.002, line * 2]} receiveShadow>
-            <boxGeometry args={[half * 2, 0.008, 0.035]} />
-            <primitive object={undergroundTile} attach="material" />
-          </mesh>
-        </group>
-      ))}
-
-      <mesh position={[0, 2.7, half]} receiveShadow userData={{ solid: true }}>
-        <boxGeometry args={[half * 2, 5.4, 0.6]} />
-        <meshStandardMaterial color={roomTint} roughness={0.98} />
-      </mesh>
-      {[-1, 1].map((side) => (
-        <group key={side}>
-          <mesh position={[side * half, 2.7, 0]} receiveShadow userData={{ solid: true }}>
-            <boxGeometry args={[0.6, 5.4, half * 2]} />
-            <meshStandardMaterial color={roomTint} roughness={0.98} />
-          </mesh>
-          <mesh position={[side * 10, 2.7, -half]} receiveShadow userData={{ solid: true }}>
-            <boxGeometry args={[8, 5.4, 0.6]} />
-            <meshStandardMaterial color={roomTint} roughness={0.98} />
-          </mesh>
-        </group>
-      ))}
-      <mesh position={[0, 5, -half]} receiveShadow userData={{ solid: true }}>
-        <boxGeometry args={[12, 0.8, 0.6]} />
-        <meshStandardMaterial color={roomTint} roughness={0.98} />
-      </mesh>
-      <mesh position={[0, 5.35, 0]} receiveShadow userData={{ solid: true }}>
-        <boxGeometry args={[half * 2, 0.4, half * 2]} />
-        <primitive object={undergroundStone} attach="material" />
-      </mesh>
-
-      {[-1, 1].map((side) => (
-        <group key={`pillar-${side}`}>
-          <mesh position={[side * 10.8, 2.35, 9.5]} castShadow receiveShadow>
-            <boxGeometry args={[1.1, 4.7, 1.1]} />
-            <meshStandardMaterial color={roomTint} roughness={1} />
-          </mesh>
-          <mesh position={[side * 10.8, 4.78, 9.5]} castShadow>
-            <boxGeometry args={[1.45, 0.28, 1.45]} />
-            <primitive object={oldBrass} attach="material" />
-          </mesh>
-        </group>
-      ))}
-
-      {[-8, 0, 8].map((x, index) => (
-        <group key={`light-${x}`}>
-          <mesh position={[x, 5.08, 2]} rotation-x={Math.PI / 2}>
-            <boxGeometry args={[2.8, 0.08, 0.45]} />
-            <meshStandardMaterial
-              color={index === room % 3 ? "#756e52" : "#d3cfab"}
-              emissive={index === room % 3 ? "#342d19" : "#6a654a"}
-              emissiveIntensity={0.8}
-              roughness={0.6}
-            />
-          </mesh>
-          <pointLight
-            position={[x, 4.8, 2]}
-            color={index === room % 3 ? "#aa8f5c" : "#e5dfb8"}
-            intensity={index === room % 3 ? 4.2 : 5.2}
-            distance={24}
-          />
-        </group>
-      ))}
-
-      <group position={[0, 0, -17.6]}>
-        {[0, 1, 2, 3].map((step) => (
-          <mesh key={step} position={[0, 0.15 + step * 0.25, -step * 0.75]} receiveShadow>
-            <boxGeometry args={[3.6 - step * 0.25, 0.3, 0.9]} />
-            <primitive object={undergroundStone} attach="material" />
-          </mesh>
-        ))}
-        <mesh position={[0, 1.15, -3.4]}>
-          <boxGeometry args={[2.1, 0.08, 0.08]} />
-          <meshStandardMaterial color="#a28d58" emissive="#574321" emissiveIntensity={0.5} />
-        </mesh>
-        <pointLight position={[0, 1.4, -17]} color="#d5aa62" intensity={2.2} distance={8} />
-      </group>
-
-      <mesh position={[0, 1.15, 17.66]} castShadow>
-        <boxGeometry args={[3.4, 2.3, 0.05]} />
-        <primitive object={oldBrass} attach="material" />
-      </mesh>
-      <mesh position={[0, 1.15, 17.6]}>
-        <planeGeometry args={[1.8, 1.2]} />
-        <meshBasicMaterial color="#171811" />
-      </mesh>
-      <pointLight position={[0, 2.8, 14]} color="#c6a05d" intensity={1.7} distance={11} />
-
-      {[-1, 1].map((side) => (
-        <group key={`furnishing-${side}`} position={[side * 13.2, 0, -3]}>
-          <mesh position={[0, 0.62, 0]} castShadow receiveShadow>
-            <boxGeometry args={[2.1, 1.2, 1.2]} />
-            <meshStandardMaterial color="#493a29" roughness={0.94} />
-          </mesh>
-          <mesh position={[0, 1.25, 0]} castShadow>
-            <boxGeometry args={[2.3, 0.12, 1.35]} />
-            <primitive object={oldBrass} attach="material" />
-          </mesh>
-        </group>
-      ))}
-    </>
-  );
+function RoomBox({ position, size, color, map, metal = false }: {
+  position: [number, number, number]; size: [number, number, number]; color: string; map?: THREE.Texture; metal?: boolean;
+}) {
+  return <mesh position={position} castShadow receiveShadow userData={{ solid: true }}>
+    <boxGeometry args={size} />
+    <meshStandardMaterial color={color} map={map ?? null} roughness={metal ? .68 : .96} metalness={metal ? .55 : 0} />
+  </mesh>;
 }
 
+/** Warm, readable abandoned chambers with a gated stairwell and physical furniture. */
+export function UndergroundScene({ room, doorRef }: { room: number; doorRef: RefObject<THREE.Group | null> }) {
+  const textures = useMemo(() => ({ stone: dungeonTexture('stone'), floor: dungeonTexture('floor'), wood: dungeonTexture('wood') }), []);
+  useEffect(() => () => Object.values(textures).forEach(texture => texture.dispose()), [textures]);
+  const tint = ['#d2c6ae', '#b9c5bd', '#c8c0b4'][Math.max(0, room - 1) % 3];
+  return <>
+    <color attach="background" args={["#393c36"]} />
+    <fog attach="fog" args={["#65695e", 26, 72]} />
+    <hemisphereLight args={["#eee5cb", "#737c66", 2]} />
+    <ambientLight color="#fff0d7" intensity={1.1} />
+    <RoomBox position={[0, -.31, 0]} size={[48, .6, 48]} color="#c0bdaf" map={textures.floor} />
+    <RoomBox position={[0, 2.7, 24]} size={[48, 5.4, .6]} color={tint} map={textures.stone} />
+    <RoomBox position={[0, 2.7, -24]} size={[48, 5.4, .6]} color={tint} map={textures.stone} />
+    <RoomBox position={[0, 5.5, 0]} size={[48, .4, 48]} color="#9a9689" map={textures.stone} />
+    {[-1, 1].map(side => <group key={side}>
+      <RoomBox position={[side * 24, 2.7, 0]} size={[.6, 5.4, 48]} color={tint} map={textures.stone} />
+      <RoomBox position={[side * 13.5, 2.7, DOOR_Z]} size={[21, 5.4, .7]} color={tint} map={textures.stone} />
+      {[ -12, 9.5 ].map(z => <group key={z}>
+        <RoomBox position={[side * 21.5, 2.55, z]} size={[.85, 5.1, 1.1]} color="#a7a494" map={textures.stone} />
+        <RoomBox position={[side * 21.5, .25, z]} size={[1.15, .5, 1.4]} color="#7b7c6a" />
+      </group>)}
+      <RoomBox position={[side * 23.5, .6, 0]} size={[.08, .9, 47]} color="#626b4d" />
+      <RoomBox position={[side * 22.8, 4.6, 0]} size={[.18, .18, 46]} color="#766445" metal />
+      {[ -10, 4, 17 ].map((z, index) => <group key={z}>
+        <RoomBox position={[side * 23.3, 3.6, z]} size={[.26, .65, .45]} color="#4d4d40" metal />
+        <mesh position={[side * 23.1, 3.6, z]}>
+          <boxGeometry args={[.18, .4, .27]} />
+          <meshStandardMaterial color="#ffe3ac" emissive="#ffce83" emissiveIntensity={2.2} />
+        </mesh>
+        <pointLight position={[side * 19.5, 3.4, z]} color={index === room % 3 ? '#f5e0b9' : '#ffe4b4'} intensity={32} distance={32} decay={1.5} />
+      </group>)}
+    </group>)}
+    <RoomBox position={[0, 4.95, DOOR_Z]} size={[6, .9, .8]} color="#8c8c7a" map={textures.stone} />
+    {[-2.9, 2.9].map(x => <RoomBox key={x} position={[x, 2.2, DOOR_Z + .1]} size={[.35, 4.4, .85]} color="#8c8c7a" map={textures.stone} />)}
+    <group ref={doorRef} position={[0, 0, DOOR_Z]}>
+      {[-1, 1].map(side => <group key={side} position={[side * 2.6, 0, 0]}>
+        <RoomBox position={[-side * 1.3, 2.05, 0]} size={[2.6, 4.1, .22]} color="#958068" map={textures.wood} />
+        {[.55, 2.05, 3.55].map(y => <RoomBox key={y} position={[-side * 1.3, y, .16]} size={[2.55, .16, .1]} color="#575c55" metal />)}
+        <RoomBox position={[-side * 2.25, 1.85, .23]} size={[.14, .42, .14]} color="#b79c62" metal />
+      </group>)}
+    </group>
+    <pointLight position={[0, 3.5, -16]} intensity={40} color="#ffe5b6" distance={22} decay={1.5} />
+    {[0, 1, 2, 3].map(step => <RoomBox key={step} position={[0, .1 + step * .1, -19.8 - step * .65]} size={[4.8, .2 + step * .2, .65]} color="#a19e8d" map={textures.stone} />)}
+    <mesh position={[0, 4.35, DOOR_Z + .48]}>
+      <planeGeometry args={[1.4, .18]} />
+      <meshBasicMaterial color="#c9dca9" />
+    </mesh>
+    {ROOM_TABLES.map((table, index) => <group key={index} position={[table.x, 0, table.z]}>
+      <RoomBox position={[0, 1.2, 0]} size={[table.width, .18, table.depth]} color="#aa9270" map={textures.wood} />
+      {[-1, 1].flatMap(x => [-1, 1].map(z => <RoomBox key={`${x}:${z}`} position={[x * (table.width / 2 - .2), .56, z * .55]} size={[.18, 1.12, .18]} color="#65563e" map={textures.wood} />))}
+      <RoomBox position={[.6, 1.35, .25]} size={[.38, .12, .24]} color="#a6a08a" />
+      <RoomBox position={[-.7, 1.33, -.25]} size={[.5, .07, .35]} color="#d7caa7" />
+    </group>)}
+    {ROOM_CHESTS.map((chest, index) => <group key={index} position={[chest.x, 0, chest.z]} rotation-y={index % 2 ? -.18 : .15}>
+      <RoomBox position={[0, .5, 0]} size={[chest.width, 1, chest.depth]} color="#9d764a" map={textures.wood} />
+      <RoomBox position={[0, 1.06, 0]} size={[chest.width + .08, .22, chest.depth + .08]} color="#795c39" map={textures.wood} />
+      {[-.65, .65].map(x => <RoomBox key={x} position={[x, .58, .67]} size={[.13, 1.04, .06]} color="#505950" metal />)}
+      <RoomBox position={[0, .87, .72]} size={[.24, .32, .12]} color="#af9256" metal />
+    </group>)}
+    {/* Stable patches of damp plaster, fallen masonry, and abandoned boards. */}
+    {Array.from({ length: 16 }, (_, i) => <group key={i} position={[(i % 2 ? 1 : -1) * (16 + i % 5), 0, -13 + (i * 7 % 32)]} rotation-y={i * 1.7}>
+      <RoomBox position={[0, .1, 0]} size={[.4 + i % 3 * .16, .2, .35]} color={i % 2 ? '#92927e' : '#b4ae9c'} />
+      {i % 3 === 0 && <RoomBox position={[.5, .07, .2]} size={[1.5, .1, .2]} color="#786449" map={textures.wood} />}
+    </group>)}
+    {[ -9, 8 ].map(x => <RoomBox key={x} position={[x, 5.15, 0]} size={[.24, .25, 47]} color="#5a5445" metal />)}
+  </>;
+}

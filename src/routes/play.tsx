@@ -24,9 +24,9 @@ export const Route = createFileRoute("/play")({
   head: () => ({
     meta: [
       { title: "Dungeon Mode — Mexican Standof" },
-      { name: "description", content: "Clear five enemy waves, earn credits and experience, and level up your operator." },
+      { name: "description", content: "Fight five gunfight waves or explore endless underground rooms. Earn coins and experience." },
       { property: "og:title", content: "Dungeon Mode — Mexican Standof" },
-      { property: "og:description", content: "Clear the five-wave dungeon to earn credits, experience, and operator levels." },
+      { property: "og:description", content: "Fight five gunfight waves or survive endless underground rooms." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -69,7 +69,7 @@ function PlayPage() {
         avatarColors={p.avatarCustomizationUnlocked ? p.avatarColors : undefined}
         armourReduction={ARMOUR_REDUCTION[p.equippedShirt ?? ""] ?? 0}
         onWaveCleared={async (wave) => {
-          const res = await awardWave(map, diff, wave, runId.current);
+          const res = await awardWave(map, diff, wave, runId.current, "dungeon", dungeonVariant);
           runId.current = res.runId;
           return res;
         }}
@@ -86,8 +86,10 @@ function PlayPage() {
           if (drop.inventoryFull) toast.error("Inventory full; some loot could not be collected");
         }}
         onBookFound={() => {
-          if (findEnchantingBook()) toast.success("Enchanting book found in the room");
+          const found = findEnchantingBook();
+          if (found) toast.success("Enchanting book found in the room");
           else toast.error("Your hotbar and bundle are full");
+          return found;
         }}
         onRestart={() => { runId.current = null; }}
         onExit={async (stats) => {
@@ -113,7 +115,7 @@ function PlayPage() {
           onChange={setDungeonVariant}
           options={[
             { id: "gunfight", title: "GUNFIGHT", sub: "Five waves of armed enemies. Hold the arena and fight back." },
-            { id: "underground", title: "UNDERGROUND", sub: "Descend through five ancient rooms. Unarmed zombies grow in number and strength." },
+            { id: "underground", title: "UNDERGROUND", sub: "Endless abandoned rooms. Clear the zombies, then enter the open doorway to descend." },
           ]}
         />
         {dungeonVariant === "gunfight" && (
@@ -142,7 +144,7 @@ function PlayPage() {
         </div>
         {dungeonVariant === "underground" && (
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Clear each room to climb to the next. Every room brings more zombies, tougher tiers, and a darker ancient chamber.
+            Survive as many rooms as you can. Clear each chamber to open its doors, then follow the stairs deeper underground. Enchanting books are rare finds.
             Keep your distance: their only attack is up close.
           </p>
         )}

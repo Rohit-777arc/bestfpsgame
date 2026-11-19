@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { CharacterPreview } from "@/components/game/CharacterPreview";
 import { GameChat, type GameChatMessage } from "@/components/game/GameChat";
 import { ExperienceBar } from "@/components/game/ExperienceBar";
-import { DUNGEON_WAVES, enemyExperience } from "@/game/sim/progression";
+import { createUndergroundRoom, stepUndergroundRoom, canLeaveUndergroundRoom, undergroundBlocked, undergroundFloorHeight } from "@/game/sim/underground";
+import { isFinalDungeonWave, DUNGEON_WAVES, enemyExperience } from "@/game/sim/progression";
 import { playExperiencePickup, playLevelUp } from "@/game/audio";
 import { isCoordinator, playerId, sendEvent, sendState, type NetBus, type NetEvent, type RosterEntry } from "@/game/net";
 import { HOTBAR_ITEMS, type HotbarInventory } from "@/game/sim/hotbar";
@@ -60,7 +61,7 @@ export interface ArenaProps {
   onWaveCleared?: (wave: number) => Promise<{ awarded: number; experience: number; levelsGained?: number; level?: number }> | { awarded: number; experience: number; levelsGained?: number; level?: number } | undefined;
   onExperienceCollected?: (amount: number) => Promise<{ levelsGained: number; level: number }>;
   onDungeonKill?: (tier: "grunt" | "runner" | "brute" | "enchanter") => void;
-  onBookFound?: () => void;
+  onBookFound?: () => boolean;
   hotbar: HotbarInventory;
   ownedSwords?: string[];
   equippedKnife?: string | null;
@@ -197,7 +198,10 @@ function World(
   const collectingExperience = useRef(false);
   const [experienceOrbKeys, setExperienceOrbKeys] = useState<number[]>([]);
   const experienceOrbMeshes = useRef(new Map<number, THREE.Mesh>());
-  const bookPickupRoom = useRef(0);
+  const roomState = useRef(createUndergroundRoom(0, 0));
+  const exitDoor = useRef<THREE.Group>(null);
+  const [roomBookVisible, setRoomBookVisible] = useState(false);
+  const nextBookAttemptAt = useRef(0);
   const nextExperienceOrbId = useRef(0);
   const wave = useRef(0);
   const waveSeed = useRef(0);
@@ -313,6 +317,10 @@ function World(
     (n: number, seed: number) => {
       wave.current = n;
       waveSeed.current = seed;
+      roomState.current = createUndergroundRoom(n, seed);
+      setRoomBookVisible(underground && roomState.current.bookAvailable);
+      nextBookAttemptAt.current = 0;
+      if (exitDoor.current) exitDoor.current.children.forEach(door => { door.rotation.y = 0; });
       nextWaveAt.current = -1;
       const plan = underground
         ? undergroundSpawnPlan(difficulty, n, seed)
@@ -356,7 +364,7 @@ function World(
     runExperience.current = 0;
     runRewardSaveFailed.current = false;
     experienceOrbs.current = [];
-    bookPickupRoom.current = 0;
+    setRoomBookVisible(false);
     experienceOrbMeshes.current.clear();
     setExperienceOrbKeys([]);
     timeLeft.current = TRAIN_TIME;
@@ -785,7 +793,7 @@ function World(
   async function waveDone(n: number) {
     if (clearedWave.current >= n) return;
     clearedWave.current = n;
-    const finalDungeonWave = mode === "dungeon" && n >= DUNGEON_WAVES;
+    const finalDungeonWave = isFinalDungeonWave(mode, n, props.dungeonVariant);
     if (finalDungeonWave) {
       over.current = true;
       document.exitPointerLock?.();
@@ -820,7 +828,7 @@ function World(
       return;
     }
     api.patch((h) => ({
-      banner: reward.levelsGained ? "LEVEL UP!" : `WAVE ${n} CLEARED`,
+      banner: reward.levelsGained ? "LEVEL UP!" : `${underground ? "ROOM" : "WAVE"} ${n} CLEARED`,
       sub: reward.levelsGained ? `LEVEL ${reward.level} · +${reward.awarded} COINS · +${reward.experience} EXP` : reward.awarded ? `+${reward.awarded} COINS · +${reward.experience} EXP` : "Next wave incoming",
       earned: h.earned + reward.awarded,
     }));
@@ -880,7 +888,7 @@ function World(
           Math.abs(camera.position.x - c.x) < c.s / 2 + 0.3 &&
           Math.abs(camera.position.z - c.z) < c.s / 2 + 0.3,
       );
-    const floor = under && feetY >= under.s - 0.5 ? under.s : 0;
+    const floor = underground ? undergroundFloorHeight(camera.position.x, camera.position.z) : under && feetY >= under.s - 0.5 ? under.s : 0;
     const grounded = feetY <= floor + 0.001;
     if (live && !dead.current && (k.Space || (touchMode.current && touch.current.jump)) && grounded) vy.current = JUMP_V;
     vy.current -= GRAVITY * dt;
@@ -894,8 +902,8 @@ function World(
       const feet = camera.position.y - EYE;
       const nx = camera.position.x + move.x;
       const nz = camera.position.z + move.z;
-      if (underground || !blocked(nx, camera.position.z, feet)) camera.position.x = nx;
-      if (underground || !blocked(camera.position.x, nz, feet)) camera.position.z = nz;
+      if (underground ? !undergroundBlocked(nx, camera.position.z, roomState.current.doorProgress) : !blocked(nx, camera.position.z, feet)) camera.position.x = nx;
+      if (underground ? !undergroundBlocked(camera.position.x, nz, roomState.current.doorProgress) : !blocked(camera.position.x, nz, feet)) camera.position.z = nz;
       const arenaLimit = underground ? UNDERGROUND_ROOM_HALF_SIZE - 0.7 : ARENA - 0.5;
       camera.position.x = THREE.MathUtils.clamp(camera.position.x, -arenaLimit, arenaLimit);
       camera.position.z = THREE.MathUtils.clamp(camera.position.z, -arenaLimit, arenaLimit);
@@ -974,12 +982,16 @@ function World(
       live &&
       !dead.current &&
       wave.current > 0 &&
-      bookPickupRoom.current !== wave.current &&
+      roomState.current.bookAvailable &&
+      clock.current >= nextBookAttemptAt.current &&
       Math.hypot(camera.position.x + 13.2, camera.position.z + 3) < 1.7
     ) {
-      bookPickupRoom.current = wave.current;
-      props.onBookFound?.();
-      api.feed("ENCHANTING BOOK FOUND");
+      nextBookAttemptAt.current = clock.current + 2;
+      if (props.onBookFound?.()) {
+        roomState.current.bookAvailable = false;
+        setRoomBookVisible(false);
+        api.feed("ENCHANTING BOOK FOUND");
+      }
     }
 
     // enemies AI
@@ -1171,8 +1183,8 @@ function World(
       const step = e.speed * dt;
       const nx = e.x + (moveX / moveLength) * step;
       const nz = e.z + (moveZ / moveLength) * step;
-      const hitX = !underground && blocked(nx, e.z, 0, 0.45);
-      const hitZ = !underground && blocked(e.x, nz, 0, 0.45);
+      const hitX = underground ? undergroundBlocked(nx, e.z, roomState.current.doorProgress, 0.45) : blocked(nx, e.z, 0, 0.45);
+      const hitZ = underground ? undergroundBlocked(e.x, nz, roomState.current.doorProgress, 0.45) : blocked(e.x, nz, 0, 0.45);
       if (!hitX) e.x = nx;
       if (!hitZ) e.z = nz;
       if (hitX && hitZ) {
@@ -1189,26 +1201,37 @@ function World(
       e.moving = true;
     }
 
+    // The same stepper advances the door; the scene only draws its hinge pose.
+    if (underground && live && !dead.current) {
+      stepUndergroundRoom(roomState.current, dt, aliveCount === 0 && enemies.current.length > 0);
+      if (exitDoor.current) {
+        const progress = roomState.current.doorProgress;
+        const eased = progress * progress * (3 - 2 * progress);
+        exitDoor.current.children.forEach((door, index) => {
+          door.rotation.y = (index === 0 ? -1 : 1) * eased * Math.PI / 2;
+        });
+      }
+    }
     // wave progression
-    if ((mode === "dungeon" || mode === "coop") && !over.current && wave.current > 0 && aliveCount === 0 && enemies.current.length) {
+    if ((mode === "dungeon" || mode === "coop") && live && !dead.current && wave.current > 0 && aliveCount === 0 && enemies.current.length) {
       if (nextWaveAt.current < 0) {
         nextWaveAt.current = clock.current + INTERMISSION;
-        const finalDungeonWave = mode === "dungeon" && wave.current >= DUNGEON_WAVES;
+        const finalDungeonWave = isFinalDungeonWave(mode, wave.current, props.dungeonVariant);
         if (finalDungeonWave) {
           api.patch({ banner: "WAVE CLEARED", sub: "Collect the remaining EXP orbs!" });
         } else {
           void waveDone(wave.current);
         }
       } else if (clock.current >= nextWaveAt.current) {
-        if (mode === "dungeon" && wave.current >= DUNGEON_WAVES) {
+        if (isFinalDungeonWave(mode, wave.current, props.dungeonVariant)) {
           void waveDone(wave.current);
           nextWaveAt.current = -1;
         } else {
           const needsRoomTransition =
-            underground && (Math.abs(camera.position.x) > 3 || camera.position.z > -15.5);
+            underground && !canLeaveUndergroundRoom(roomState.current, camera.position.x, camera.position.z);
           if (needsRoomTransition) {
             nextWaveAt.current = clock.current + 0.5;
-            api.patch({ banner: "NEXT ROOM", sub: "FOLLOW THE ARROW TO THE STAIRWAY" });
+            api.patch({ banner: "NEXT ROOM", sub: "THE DOORS ARE OPEN · FOLLOW THE STAIRS" });
           } else {
             if (underground) {
               camera.position.set(0, EYE, 0);
@@ -1313,7 +1336,7 @@ function World(
 
   return (
     <>
-      {underground ? <UndergroundScene room={wave.current} /> : <Scene map={MAPS[props.map]} />}
+      {underground ? <UndergroundScene room={wave.current} doorRef={exitDoor} /> : <Scene map={MAPS[props.map]} />}
       {enemyKeys.map((key) => {
         const id = Number(key.split(":")[1]);
         const e = enemies.current.find((x) => x.id === id);
@@ -1333,7 +1356,7 @@ function World(
           <pointLight color="#80ff20" intensity={0.55} distance={2.5} />
         </mesh>
       ))}
-      {underground && bookPickupRoom.current !== wave.current && (
+      {underground && roomBookVisible && (
         <group position={[-13.2, 1.35, -3]}>
           <mesh rotation-x={-0.18} rotation-z={-0.12} castShadow>
             <boxGeometry args={[0.42, 0.08, 0.32]} />
@@ -1500,7 +1523,7 @@ export function Arena(props: ArenaProps) {
         shadows
         gl={{
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: props.dungeonVariant === "underground" ? 0.9 : map.night ? 1.25 : 1.05,
+          toneMappingExposure: props.dungeonVariant === "underground" ? 1.15 : map.night ? 1.25 : 1.05,
         }}
         dpr={[1, 2]}
         camera={{ fov: 75, near: 0.05, position: [0, EYE, 0] }}
@@ -1640,8 +1663,7 @@ export function Arena(props: ArenaProps) {
         )}
         {props.dungeonVariant === "underground" &&
           hud.enemiesLeft === 0 &&
-          hud.wave > 0 &&
-          hud.wave < DUNGEON_WAVES && (
+          hud.wave > 0 && (
             <div className="fps-next-room-arrow" aria-label="Next room is up the stairs">
               ↑ <span>NEXT ROOM</span>
             </div>

@@ -59,9 +59,10 @@ const action = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("wave"),
     difficulty: z.enum(["easy", "normal", "hard"]),
-    wave: z.number().int().min(1).max(10000),
+    wave: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
     runId: z.string().max(128).nullable(),
     mode: z.enum(["dungeon", "coop"]),
+    variant: z.enum(["gunfight", "underground"]).optional(),
   }),
 ]);
 const seed = z

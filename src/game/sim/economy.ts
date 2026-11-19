@@ -14,7 +14,7 @@ import { DEFAULT_AVATAR_COLORS, isAvatarColors, type AvatarColors } from "./avat
 import { EMPTY_LOOT_INVENTORY, CRAFTING_RECIPES, type LootInventory } from "./dungeonLoot";
 import { addHotbarItem } from "./hotbar";
 import { waveCredits, type Difficulty } from "./waves";
-import { DUNGEON_WAVES, DUNGEON_CLEAR_CREDITS } from "./progression";
+import { isFinalDungeonWave, DUNGEON_WAVES, DUNGEON_CLEAR_CREDITS } from "./progression";
 
 export const UNLIMITED_CREDITS = Number.MAX_SAFE_INTEGER;
 export const AVATAR_PRICE = 1250;
@@ -55,6 +55,7 @@ export type EconomyAction =
       wave: number;
       runId: string | null;
       mode: "dungeon" | "coop";
+      variant?: "gunfight" | "underground";
     };
 
 export function freshEconomy(seed: Partial<EconomyState> = {}): EconomyState {
@@ -213,14 +214,14 @@ export function applyEconomyAction(
       if (now - state.lastWaveAt < 5000) throw new Error("Wave reward is not ready yet");
       if (action.wave !== 1 && (action.runId !== state.runId || action.wave !== state.wave + 1))
         throw new Error("Waves must be cleared in order");
-      if (action.mode === "dungeon" && action.wave > DUNGEON_WAVES)
+      if (action.mode === "dungeon" && action.variant !== "underground" && action.wave > DUNGEON_WAVES)
         throw new Error("Dungeon is complete");
       state.runId = action.wave === 1 ? (action.runId ?? newRunId) : state.runId;
       state.wave = action.wave;
       state.lastWaveAt = now;
       state.credits +=
         waveCredits(action.difficulty) +
-        (action.mode === "dungeon" && action.wave === DUNGEON_WAVES ? DUNGEON_CLEAR_CREDITS : 0);
+        (isFinalDungeonWave(action.mode, action.wave, action.variant) ? DUNGEON_CLEAR_CREDITS : 0);
       break;
     }
   }

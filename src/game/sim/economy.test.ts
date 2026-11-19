@@ -132,3 +132,15 @@ describe("economy balance and purchases", () => {
     ).toThrow("in order");
   });
 });
+
+
+describe("endless underground rewards", () => {
+  it("pays beyond room five, without a dungeon-completion bonus or a room cap", () => {
+    let state = freshEconomy();
+    for (let wave = 1; wave <= 1001; wave++) {
+      state = applyEconomyAction(state, { kind: "wave", difficulty: "easy", wave, runId: wave === 1 ? null : "endless", mode: "dungeon", variant: "underground" }, Math.random, wave * 6000, "endless").state;
+    }
+    expect(state.wave).toBe(1001);
+    expect(state.credits).toBe(1001 * 15);
+  });
+});

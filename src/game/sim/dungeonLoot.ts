@@ -38,6 +38,8 @@ export type LootDrop = {
   inventoryFull?: boolean;
 };
 
+export const ENEMY_BOOK_CHANCE = 0.001;
+
 export function rollDungeonDrop(
   tier: "grunt" | "runner" | "brute" | "enchanter",
   random: () => number = Math.random,
@@ -49,7 +51,7 @@ export function rollDungeonDrop(
   if (tier === "enchanter") materials.essence = 2;
   return {
     materials,
-    book: tier !== "enchanter" && random() < 0.035,
+    book: tier !== "enchanter" && random() < ENEMY_BOOK_CHANCE,
     shard: tier === "enchanter",
   };
 }

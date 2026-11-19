@@ -7,7 +7,7 @@ import { updateEconomy } from "./economy.functions";
 import type { EconomyAction } from "./sim/economy";
 import { supabase } from "@/integrations/supabase/client";
 import { isWeaponId, STARTER_WEAPON, WEAPONS, WEAPON_IDS, type WeaponId } from "./sim/weapons";
-import { waveCredits, type Difficulty } from "./sim/waves";
+import { waveCredits, type Difficulty, type DungeonVariant } from "./sim/waves";
 import type { MapId } from "./sim/maps";
 import { COSMETICS, isCosmeticId, type CosmeticId, type CosmeticSlot } from "./sim/cosmetics";
 import {
@@ -20,7 +20,7 @@ import {
   isAvatarColors,
   type AvatarColors,
 } from "./sim/avatar";
-import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, waveExperience } from "./sim/progression";
+import { isFinalDungeonWave, addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, waveExperience } from "./sim/progression";
 import {
   canCraft,
   canEnchant,
@@ -467,6 +467,7 @@ export async function awardWave(
   wave: number,
   runId: string | null,
   mode: "dungeon" | "coop" = "dungeon",
+  variant: DungeonVariant = "gunfight",
 ): Promise<{
   awarded: number;
   experience: number;
@@ -475,12 +476,12 @@ export async function awardWave(
   runId: string | null;
 }> {
   const payout = waveCredits(difficulty);
-  const completed = mode === "dungeon" && wave === DUNGEON_WAVES;
+  const completed = isFinalDungeonWave(mode, wave, variant);
   const awarded = payout + (completed ? DUNGEON_CLEAR_CREDITS : 0);
   const gainedExperience = waveExperience(difficulty) + (completed ? DUNGEON_CLEAR_EXPERIENCE : 0);
   if (state.kind === "account") {
-    const res = await awardWaveCredits({ data: { map, difficulty, wave, runId, mode } });
-    const wallet = await runEconomy({ kind: "wave", difficulty, wave, runId: res.runId, mode });
+    const res = await awardWaveCredits({ data: { map, difficulty, wave, runId, mode, variant } });
+    const wallet = await runEconomy({ kind: "wave", difficulty, wave, runId: res.runId, mode, variant });
     const levelsGained = Math.max(0, res.level - state.level);
     state = {
       ...state,
@@ -498,7 +499,7 @@ export async function awardWave(
       runId: res.runId,
     };
   }
-  const wallet = await runEconomy({ kind: "wave", difficulty, wave, runId, mode });
+  const wallet = await runEconomy({ kind: "wave", difficulty, wave, runId, mode, variant });
   const previousLevel = state.level;
   const xp = addExperience(state, gainedExperience);
   state = {

@@ -96,3 +96,8 @@ export function addExperience(progress: PlayerExperience, amount: number): Playe
 
   return { level, experience };
 }
+
+/** Only the gunfight dungeon has a final wave; underground keeps going. */
+export function isFinalDungeonWave(mode: string, wave: number, variant: "gunfight" | "underground" = "gunfight"): boolean {
+  return mode === "dungeon" && variant === "gunfight" && wave >= DUNGEON_WAVES;
+}

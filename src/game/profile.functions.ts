@@ -5,7 +5,7 @@ import { isWeaponId, STARTER_WEAPON, WEAPONS } from "./sim/weapons";
 import { waveCredits } from "./sim/waves";
 import { COSMETICS, isCosmeticId } from "./sim/cosmetics";
 import { CRAFTING_RECIPES } from "./sim/dungeonLoot";
-import { addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, totalExperience, waveExperience } from "./sim/progression";
+import { isFinalDungeonWave, addExperience, DUNGEON_CLEAR_CREDITS, DUNGEON_CLEAR_EXPERIENCE, DUNGEON_WAVES, totalExperience, waveExperience } from "./sim/progression";
 import { isWeaponSkinId, isWeaponSkinRarity } from "./sim/gacha";
 import { AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLORS } from "./sim/avatar";
 
@@ -190,9 +190,10 @@ export const recordPlayerSession = createServerFn({ method: "POST" })
 const awardInput = z.object({
   map: z.string().min(1).max(40),
   difficulty: z.enum(["easy", "normal", "hard"]),
-  wave: z.number().int().min(1).max(999),
+  wave: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   runId: z.string().uuid().nullable(),
   mode: z.enum(["dungeon", "coop"]),
+  variant: z.enum(["gunfight", "underground"]).default("gunfight"),
 });
 
 /** Credits a signed-in player earns for clearing one dungeon wave. */
@@ -201,10 +202,10 @@ export const awardWaveCredits = createServerFn({ method: "POST" })
   .inputValidator((input) => awardInput.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    if (data.mode === "dungeon" && data.wave > DUNGEON_WAVES) {
+    if (data.mode === "dungeon" && data.variant === "gunfight" && data.wave > DUNGEON_WAVES) {
       throw new Error("Dungeon is already complete");
     }
-    const completed = data.mode === "dungeon" && data.wave === DUNGEON_WAVES;
+    const completed = isFinalDungeonWave(data.mode, data.wave, data.variant);
     const payout = waveCredits(data.difficulty) + (completed ? DUNGEON_CLEAR_CREDITS : 0);
     const gainedExperience = waveExperience(data.difficulty) + (completed ? DUNGEON_CLEAR_EXPERIENCE : 0);
 

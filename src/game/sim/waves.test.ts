@@ -12,24 +12,24 @@ import {
   waveCredits,
 } from "./waves";
 
-// Wave rewards are generous enough to make progression and cosmetics accessible.
+// Coin payouts keep harder waves rewarding while slowing early progression.
 describe("wave credit payouts", () => {
-  it("pays 20 credits per easy wave", () => {
-    expect(waveCredits("easy")).toBe(20);
+  it("pays 15 credits per easy wave", () => {
+    expect(waveCredits("easy")).toBe(15);
   });
-  it("pays 35 credits per normal wave", () => {
-    expect(waveCredits("normal")).toBe(35);
+  it("pays 26 credits per normal wave", () => {
+    expect(waveCredits("normal")).toBe(26);
   });
-  it("pays 55 credits per hard wave", () => {
-    expect(waveCredits("hard")).toBe(55);
+  it("pays 41 credits per hard wave", () => {
+    expect(waveCredits("hard")).toBe(41);
   });
   it("harder difficulties never pay less than easier ones", () => {
     expect(DIFFICULTIES.hard.creditsPerWave).toBeGreaterThan(DIFFICULTIES.normal.creditsPerWave);
     expect(DIFFICULTIES.normal.creditsPerWave).toBeGreaterThan(DIFFICULTIES.easy.creditsPerWave);
   });
   it("sums full-run payouts", () => {
-    expect(runCredits("easy", 4)).toBe(80);
-    expect(runCredits("hard", 3)).toBe(165);
+    expect(runCredits("easy", 4)).toBe(60);
+    expect(runCredits("hard", 3)).toBe(123);
     expect(runCredits("normal", 0)).toBe(0);
   });
 });

@@ -26,6 +26,7 @@ export const getProfile = createServerFn({ method: "GET" })
       supabase.from("profile_weapon_skins").select("skin_id").eq("user_id", userId),
     ]);
     return {
+      userId,
       name: profile?.display_name ?? "Player",
       credits: profile?.credits ?? 0,
       level: profile?.level ?? 1,

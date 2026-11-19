@@ -63,6 +63,7 @@ function ArmoryPage() {
   );
   const [busyLoot, setBusyLoot] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
   const [portalItem, setPortalItem] = useState<string | null>(null);
   const [rolling, setRolling] = useState<WeaponSkinRarity | "lottery" | null>(null);
   const [crateBusy, setCrateBusy] = useState<WeaponSkinRarity | null>(null);
@@ -509,14 +510,18 @@ function ArmoryPage() {
           <section className="codes-panel mso-panel">
             <div className="hub-info-kicker">SECRET REDEEMABLES</div>
             <h2 className="mso-display mt-1 text-3xl">CODES & REWARDS</h2>
-            <form className="codes-form" onSubmit={(event) => {
+            <form className="codes-form" onSubmit={async (event) => {
               event.preventDefault();
+              if (codeBusy) return;
+              setCodeBusy(true);
               try {
-                const result = redeemCode(code);
+                const result = await redeemCode(code);
                 toast.success(`${result.reward} · code redeemed`);
                 setCode("");
               } catch (error) {
                 toast.error(error instanceof Error ? error.message : "Could not redeem code");
+              } finally {
+                setCodeBusy(false);
               }
             }}>
               <input
@@ -528,7 +533,7 @@ function ArmoryPage() {
                 autoCapitalize="characters"
                 spellCheck={false}
               />
-              <button className="mso-btn" type="submit" disabled={!code.trim()}>REDEEM</button>
+              <button className="mso-btn" type="submit" disabled={!code.trim() || codeBusy || p.kind === "loading"}>{codeBusy ? "REDEEMING…" : "REDEEM"}</button>
             </form>
             <div className="codes-status">
               <a className="mso-btn" href="/racing">PLAY 3D CAR RACE</a>

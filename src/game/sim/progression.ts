@@ -6,7 +6,7 @@ export interface PlayerExperience {
 export const EXPERIENCE_PER_LEVEL = 100;
 export const EXPERIENCE_INCREASE_PER_LEVEL = 50;
 export const DUNGEON_WAVES = 5;
-export const DUNGEON_CLEAR_CREDITS = 100;
+export const DUNGEON_CLEAR_CREDITS = 75;
 export const DUNGEON_CLEAR_EXPERIENCE = 100;
 
 export const ENEMY_EXPERIENCE = {

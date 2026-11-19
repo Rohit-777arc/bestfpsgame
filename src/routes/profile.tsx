@@ -12,6 +12,7 @@ import {
   setEquippedCosmetic,
   unlockAvatarCustomization,
 } from "@/game/progress";
+import { AVATAR_PRICE } from "@/game/sim/economy";
 import { COSMETICS, type CosmeticId, type CosmeticSlot } from "@/game/sim/cosmetics";
 import {
   AVATAR_COLOR_OPTIONS,
@@ -170,7 +171,7 @@ function ProfilePage() {
               </div>
               <div>
                 <span>IN-GAME COINS</span>
-                <strong>{progress.credits} ¢</strong>
+                <strong>{progress.unlimitedMoney ? "∞" : progress.credits} ¢</strong>
               </div>
               <div>
                 <span>HOURS PLAYED</span>
@@ -208,7 +209,7 @@ function ProfilePage() {
               </div>
               <div className="mso-chip">
                 <span className="mso-coin" />
-                {progress.credits}
+                {progress.unlimitedMoney ? "∞" : progress.credits}
               </div>
             </div>
 
@@ -349,24 +350,17 @@ function ProfilePage() {
                   </p>
                   {!progress.avatarCustomizationUnlocked ? (
                     <>
-                      {progress.kind !== "account" && (
-                        <p className="mt-3 text-sm text-muted-foreground">
-                          Sign in to save your skin and unlock the studio.
-                        </p>
-                      )}
                       <button
                         type="button"
                         className="mso-btn mt-4"
                         disabled={
-                          progress.kind !== "account" || progress.credits < 1000 || busy !== null
+                          progress.kind === "loading" || progress.credits < AVATAR_PRICE || busy !== null
                         }
                         onClick={() => void unlockBlockStyle()}
                       >
-                        {progress.kind !== "account"
-                          ? "SIGN IN TO UNLOCK"
-                          : progress.credits < 1000
-                            ? `NEED ${1000 - progress.credits} MORE COINS`
-                            : "UNLOCK SKIN STUDIO · 1,000 COINS"}
+                        {progress.credits < AVATAR_PRICE
+                            ? `NEED ${AVATAR_PRICE - progress.credits} MORE COINS`
+                            : `UNLOCK SKIN STUDIO · ${AVATAR_PRICE.toLocaleString()} COINS`}
                       </button>
                     </>
                   ) : (

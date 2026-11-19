@@ -1608,7 +1608,7 @@ export function Arena(props: ArenaProps) {
               <span className="fps-credit-symbol" aria-hidden="true">
                 ¢
               </span>
-              <span className="mso-num">{props.credits}</span>
+              <span className="mso-num">{props.credits === Number.MAX_SAFE_INTEGER ? "∞" : props.credits}</span>
               {hud.earned > 0 && <span className="text-[var(--mso-ally)]">+{hud.earned}</span>}
             </div>
             <div className="flex flex-col items-end gap-1">

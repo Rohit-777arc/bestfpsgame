@@ -22,8 +22,8 @@ describe("dungeon loot", () => {
       books: 1,
       shards: 1,
     };
-    expect(canCraft(inventory, "scrap-sword", 10)).toBe(true);
-    expect(canCraft(inventory, "scrap-sword", 9)).toBe(false);
+    expect(canCraft(inventory, "scrap-sword", 13)).toBe(true);
+    expect(canCraft(inventory, "scrap-sword", 12)).toBe(false);
     expect(canEnchant({ ...inventory, crafted: ["scrap-sword"] }, "scrap-sword", "ember")).toBe(true);
     expect(canEnchant(inventory, "bone-armor", "ember")).toBe(false);
   });

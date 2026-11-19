@@ -1,6 +1,10 @@
 // Player progress: credits, experience, cosmetics and the equipped loadout.
-// Guests keep everything in this browser; accounts keep it in Lovable Cloud.
+// Economy, codes, inventory and shop unlocks persist in Netlify Database.
+// Legacy browser and account progress is imported on the first economy connection.
 
+import { toast } from "sonner";
+import { updateEconomy } from "./economy.functions";
+import type { EconomyAction } from "./sim/economy";
 import { supabase } from "@/integrations/supabase/client";
 import { isWeaponId, STARTER_WEAPON, WEAPONS, WEAPON_IDS, type WeaponId } from "./sim/weapons";
 import { waveCredits, type Difficulty } from "./sim/waves";
@@ -8,13 +12,8 @@ import type { MapId } from "./sim/maps";
 import { COSMETICS, isCosmeticId, type CosmeticId, type CosmeticSlot } from "./sim/cosmetics";
 import {
   isWeaponSkinId,
-  rollLottery,
-  rollWeaponSkin,
   type WeaponSkinId,
   type WeaponSkinRarity,
-  LOTTERY_PRICE,
-  WEAPON_CRATES,
-  WEAPON_SKINS,
 } from "./sim/gacha";
 import {
   DEFAULT_AVATAR_COLORS,
@@ -42,20 +41,10 @@ import {
 import {
   awardWaveCredits,
   collectExperience as collectExperienceForAccount,
-  equipCosmeticItem,
-  equipWeapon,
   getProfile,
   importGuestProgress,
-  purchaseCosmetic,
-  purchaseWeapon,
-  openWeaponCrate as openWeaponCrateForAccount,
-  spinCreditLottery,
-  unlockAvatarCustomization as unlockAvatarCustomizationForAccount,
-  equipWeaponSkin as equipWeaponSkinForAccount,
-  saveAvatarColors,
   recordPlayerSession,
   renamePlayer,
-  spendCreditsForCraft,
 } from "./profile.functions";
 
 const STORE_KEY = "mso-progress-v1";
@@ -71,10 +60,6 @@ function loadRedeemedCodes(): string[] {
   } catch {
     return [];
   }
-}
-
-function saveRedeemedCodes(codes: string[]) {
-  localStorage.setItem(CODES_KEY, JSON.stringify(codes));
 }
 
 function loadLoot(key: string): LootInventory {
@@ -128,8 +113,24 @@ function loadLoot(key: string): LootInventory {
   }
 }
 
+let economyQueue: Promise<unknown> = Promise.resolve();
+function economySeed() {
+  return { ...state, credits: Math.min(1_000_000, state.credits) };
+}
+async function runEconomy(action: EconomyAction) {
+  const seed = economySeed();
+  const request = economyQueue.then(() => updateEconomy({ data: { action, seed } }));
+  economyQueue = request.catch(() => undefined);
+  const result = await request;
+  state = { ...state, ...result.state };
+  if (state.kind === "guest") saveGuest(state);
+  notify();
+  return result;
+}
 function saveLoot(loot: LootInventory) {
-  localStorage.setItem(lootStorageKey, JSON.stringify(loot));
+  const seed = economySeed();
+  const request = economyQueue.then(() => updateEconomy({ data: { action: { kind: "loot", loot }, seed } }));
+  economyQueue = request.catch(() => { toast.error("Inventory could not be saved. Check your connection."); });
 }
 
 function removeLootItem(loot: LootInventory, item: HotbarItemId): void {
@@ -167,6 +168,7 @@ export interface Progress {
   loot: LootInventory;
   redeemedCodes: string[];
   racingUnlocked: boolean;
+  unlimitedMoney?: boolean;
   email?: string | undefined;
 }
 
@@ -380,6 +382,7 @@ export async function initProgress(): Promise<void> {
       };
       notify();
       await maybeImportGuest();
+      try { await runEconomy({ kind: "load" }); } catch { toast.error("Could not load your saved economy. Purchases need a connection."); }
       return;
     } catch {
       // signed in but no profile row yet (e.g. email not confirmed flow) — fall back to guest view
@@ -388,6 +391,7 @@ export async function initProgress(): Promise<void> {
   lootStorageKey = `${LOOT_KEY_PREFIX}guest`;
   state = loadGuest();
   notify();
+  try { await runEconomy({ kind: "load" }); } catch { toast.error("Could not load your saved economy. Purchases need a connection."); }
 }
 
 async function maybeImportGuest() {
@@ -476,10 +480,11 @@ export async function awardWave(
   const gainedExperience = waveExperience(difficulty) + (completed ? DUNGEON_CLEAR_EXPERIENCE : 0);
   if (state.kind === "account") {
     const res = await awardWaveCredits({ data: { map, difficulty, wave, runId, mode } });
+    const wallet = await runEconomy({ kind: "wave", difficulty, wave, runId: res.runId, mode });
     const levelsGained = Math.max(0, res.level - state.level);
     state = {
       ...state,
-      credits: res.credits,
+      credits: wallet.state.credits,
       level: res.level,
       experience: res.experience,
       dungeonsCompleted: res.dungeonsCompleted,
@@ -493,11 +498,12 @@ export async function awardWave(
       runId: res.runId,
     };
   }
+  const wallet = await runEconomy({ kind: "wave", difficulty, wave, runId, mode });
   const previousLevel = state.level;
   const xp = addExperience(state, gainedExperience);
   state = {
     ...state,
-    credits: state.credits + awarded,
+    credits: wallet.state.credits,
     dungeonsCompleted: state.dungeonsCompleted + (completed ? 1 : 0),
     ...xp,
   };
@@ -508,7 +514,7 @@ export async function awardWave(
     experience: gainedExperience,
     levelsGained: xp.level - previousLevel,
     level: xp.level,
-    runId: null,
+    runId: wallet.state.runId,
   };
 }
 
@@ -564,175 +570,32 @@ export async function recordSessionStats(stats: SessionStats): Promise<void> {
 }
 
 export async function buyWeapon(id: WeaponId): Promise<void> {
-  const weapon = WEAPONS[id];
-  if (state.kind === "account") {
-    const res = await purchaseWeapon({ data: { weaponId: id } });
-    state = { ...state, credits: res.credits, weapons: [...new Set([...state.weapons, id])] };
-  } else {
-    if (state.weapons.includes(id)) return;
-    if (state.credits < weapon.price) throw new Error(`Need ${weapon.price - state.credits} more credits`);
-    state = { ...state, credits: state.credits - weapon.price, weapons: [...state.weapons, id] };
-    saveGuest(state);
-  }
-  notify();
+  await runEconomy({ kind: "weapon", id });
 }
-
 export async function setEquipped(id: WeaponId): Promise<void> {
-  if (!state.weapons.includes(id)) return;
-  if (state.kind === "account") {
-    await equipWeapon({ data: { weaponId: id } });
-  } else {
-    saveGuest({ ...state, equipped: id });
-  }
-  state = { ...state, equipped: id };
-  notify();
+  await runEconomy({ kind: "equipWeapon", id });
 }
-
 export async function buyCosmetic(id: CosmeticId): Promise<void> {
-  const item = COSMETICS.find((cosmetic) => cosmetic.id === id);
-  if (!item) throw new Error("Unknown cosmetic");
-  if (state.cosmetics.includes(id)) return;
-  if (state.kind === "account") {
-    const res = await purchaseCosmetic({ data: { cosmeticId: id } });
-    state = { ...state, credits: res.credits, cosmetics: [...state.cosmetics, id] };
-  } else {
-    if (state.credits < item.price) throw new Error(`Need ${item.price - state.credits} more credits`);
-    state = { ...state, credits: state.credits - item.price, cosmetics: [...state.cosmetics, id] };
-    saveGuest(state);
-  }
-  notify();
+  await runEconomy({ kind: "cosmetic", id });
 }
-
 export async function setEquippedCosmetic(slot: CosmeticSlot, id: CosmeticId | null): Promise<void> {
-  if (id && (!state.cosmetics.includes(id) || !COSMETICS.some((item) => item.id === id && item.slot === slot))) {
-    throw new Error("You don't own that cosmetic");
-  }
-  if (state.kind === "account") {
-    await equipCosmeticItem({ data: { slot, cosmeticId: id } });
-  }
-  state = {
-    ...state,
-    ...(slot === "shirt"
-      ? { equippedShirt: id }
-      : slot === "hat"
-        ? { equippedHat: id }
-        : slot === "pants"
-          ? { equippedPants: id }
-          : { equippedBoots: id }),
-  };
-  if (state.kind === "guest") saveGuest(state);
-  notify();
+  await runEconomy({ kind: "equipCosmetic", slot, id });
 }
-
-export async function openWeaponCrate(rarity: WeaponSkinRarity): Promise<{
-  skinId: WeaponSkinId | null;
-  refunded: boolean;
-}> {
-  const crate = WEAPON_CRATES.find((item) => item.rarity === rarity);
-  if (!crate) throw new Error("Unknown crate rarity");
-  if (state.credits < crate.price) {
-    throw new Error(`Need ${crate.price - state.credits} more credits`);
-  }
-
-  if (state.kind === "account") {
-    const result = await openWeaponCrateForAccount({ data: { rarity } });
-    const skinId =
-      typeof result.skinId === "string" && isWeaponSkinId(result.skinId)
-        ? result.skinId
-        : null;
-    state = {
-      ...state,
-      credits: result.credits,
-      weaponSkins: skinId
-        ? [...new Set([...state.weaponSkins, skinId])]
-        : state.weaponSkins,
-    };
-    notify();
-    return { skinId, refunded: result.refunded };
-  }
-
-  const availableSkins = WEAPON_SKINS.filter(
-    (skin) => skin.rarity === rarity && !state.weaponSkins.includes(skin.id),
-  );
-  if (availableSkins.length === 0) return { skinId: null, refunded: true };
-
-  const skinId = rollWeaponSkin(rarity, Math.random, state.weaponSkins);
-  state = {
-    ...state,
-    credits: state.credits - crate.price,
-    weaponSkins: [...state.weaponSkins, skinId],
-  };
-  saveGuest(state);
-  notify();
-  return { skinId, refunded: false };
+export async function openWeaponCrate(rarity: WeaponSkinRarity): Promise<{ skinId: WeaponSkinId | null; refunded: boolean }> {
+  const result = await runEconomy({ kind: "crate", id: rarity });
+  return { skinId: result.skinId, refunded: result.refunded };
 }
-
 export async function spinLottery(): Promise<number> {
-  if (state.credits < LOTTERY_PRICE) {
-    throw new Error(`Need ${LOTTERY_PRICE - state.credits} more credits`);
-  }
-  if (state.kind === "account") {
-    const result = await spinCreditLottery();
-    state = { ...state, credits: result.credits };
-    notify();
-    return result.prize;
-  }
-
-  const prize = rollLottery();
-  state = { ...state, credits: state.credits - LOTTERY_PRICE + prize };
-  saveGuest(state);
-  notify();
-  return prize;
+  return (await runEconomy({ kind: "lottery" })).prize;
 }
-
 export async function equipWeaponSkin(skinId: WeaponSkinId | null): Promise<void> {
-  if (skinId && !state.weaponSkins.includes(skinId)) {
-    throw new Error("You don't own that weapon skin");
-  }
-  if (state.kind === "account") {
-    await equipWeaponSkinForAccount({ data: { skinId } });
-  }
-  state = { ...state, equippedWeaponSkin: skinId };
-  if (state.kind === "guest") saveGuest(state);
-  notify();
+  await runEconomy({ kind: "equipSkin", id: skinId });
 }
-
 export async function unlockAvatarCustomization(): Promise<void> {
-  if (state.avatarCustomizationUnlocked) return;
-  if (state.credits < 1000) {
-    throw new Error(`Need ${1000 - state.credits} more credits`);
-  }
-  if (state.kind === "account") {
-    const result = await unlockAvatarCustomizationForAccount();
-    state = {
-      ...state,
-      credits: result.credits,
-      avatarCustomizationUnlocked: result.unlocked,
-    };
-  } else {
-    state = {
-      ...state,
-      credits: state.credits - 1000,
-      avatarCustomizationUnlocked: true,
-    };
-    saveGuest(state);
-  }
-  notify();
+  await runEconomy({ kind: "avatar" });
 }
-
-export async function customizeAvatar(
-  colors: AvatarColors,
-): Promise<void> {
-  if (!state.avatarCustomizationUnlocked) {
-    throw new Error("Unlock avatar customization before changing your colors");
-  }
-  if (!isAvatarColors(colors)) {
-    throw new Error("Choose colors from the available palettes");
-  }
-  if (state.kind === "account") await saveAvatarColors({ data: colors });
-  state = { ...state, avatarColors: colors };
-  if (state.kind === "guest") saveGuest(state);
-  notify();
+export async function customizeAvatar(colors: AvatarColors): Promise<void> {
+  await runEconomy({ kind: "colors", colors });
 }
 
 export async function setName(name: string): Promise<void> {
@@ -834,10 +697,7 @@ export async function craftDungeonItem(recipeId: string): Promise<void> {
   if (hotbar.replaced && !(hotbar.replaced in recipe.materials)) {
     removeLootItem(loot, hotbar.replaced);
   }
-  const credits =
-    state.kind === "account"
-      ? (await spendCreditsForCraft({ data: { recipeId } })).credits
-      : state.credits - recipe.fee;
+  const credits = (await runEconomy({ kind: "craft", id: recipeId })).state.credits;
   state = { ...state, credits, loot };
   if (state.kind === "guest") saveGuest(state);
   saveLoot(loot);
@@ -883,28 +743,11 @@ export function enchantDungeonItem(itemId: string, enchantmentId: string): void 
   notify();
 }
 
-export function redeemCode(input: string): { code: string; reward: string } {
+export async function redeemCode(input: string): Promise<{ code: string; reward: string }> {
+  if (state.kind === "loading") throw new Error("Wait for your profile to load");
   const code = input.trim().toUpperCase();
-  if (state.redeemedCodes.includes(code)) throw new Error("That code has already been redeemed");
-  if (code === "FREEMONEY") {
-    state = { ...state, credits: state.credits + 500, redeemedCodes: [...state.redeemedCodes, code] };
-    saveRedeemedCodes(state.redeemedCodes);
-    if (state.kind === "guest") saveGuest(state);
-    notify();
-    return { code, reward: "+500 credits" };
-  }
-  if (code === "GUNRACE") {
-    state = {
-      ...state,
-      racingUnlocked: true,
-      redeemedCodes: [...state.redeemedCodes, code],
-    };
-    saveRedeemedCodes(state.redeemedCodes);
-    if (state.kind === "guest") saveGuest(state);
-    notify();
-    return { code, reward: "Car race code redeemed" };
-  }
-  throw new Error("Unknown code");
+  const result = await runEconomy({ kind: "code", code });
+  return { code, reward: result.reward };
 }
 
 // ---- Auth ----

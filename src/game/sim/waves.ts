@@ -21,7 +21,7 @@ export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
   easy: {
     id: "easy",
     label: "Easy",
-    creditsPerWave: 20,
+    creditsPerWave: 15,
     baseEnemies: 3,
     enemiesPerWave: 1,
     maxEnemies: 9,
@@ -32,7 +32,7 @@ export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
   normal: {
     id: "normal",
     label: "Normal",
-    creditsPerWave: 35,
+    creditsPerWave: 26,
     baseEnemies: 4,
     enemiesPerWave: 2,
     maxEnemies: 12,
@@ -43,7 +43,7 @@ export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
   hard: {
     id: "hard",
     label: "Hard",
-    creditsPerWave: 55,
+    creditsPerWave: 41,
     baseEnemies: 5,
     enemiesPerWave: 3,
     maxEnemies: 14,

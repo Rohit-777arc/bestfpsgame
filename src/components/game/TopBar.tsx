@@ -47,7 +47,7 @@ export function TopBar() {
             <span className="site-credit-icon" aria-hidden="true">
               ¢
             </span>
-            <span className="mso-num">{p.kind === "loading" ? "…" : p.credits}</span>
+            <span className="mso-num">{p.kind === "loading" ? "…" : p.unlimitedMoney ? "∞" : p.credits}</span>
           </div>
           <button type="button" className="site-account" onClick={() => setOpen(true)}>
             <span className="site-account-avatar" aria-hidden="true">

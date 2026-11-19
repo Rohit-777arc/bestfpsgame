@@ -4,6 +4,7 @@ import {
   canEnchant,
   EMPTY_LOOT_INVENTORY,
   rollDungeonDrop,
+  ENEMY_BOOK_CHANCE,
 } from "./dungeonLoot";
 
 describe("dungeon loot", () => {
@@ -15,6 +16,14 @@ describe("dungeon loot", () => {
     });
   });
 
+  it("makes books a rare chance rather than a guaranteed wave reward", () => {
+    expect(rollDungeonDrop("grunt", () => ENEMY_BOOK_CHANCE / 2).book).toBe(true);
+    expect(rollDungeonDrop("grunt", () => ENEMY_BOOK_CHANCE).book).toBe(false);
+    expect(rollDungeonDrop("brute", () => .5).book).toBe(false);
+    expect(rollDungeonDrop("enchanter", () => 0).book).toBe(false);
+    expect(ENEMY_BOOK_CHANCE).toBeLessThan(.01);
+  });
+
   it("only allows crafting and enchanting when their requirements are owned", () => {
     const inventory = {
       ...EMPTY_LOOT_INVENTORY,
@@ -22,8 +31,8 @@ describe("dungeon loot", () => {
       books: 1,
       shards: 1,
     };
-    expect(canCraft(inventory, "scrap-sword", 10)).toBe(true);
-    expect(canCraft(inventory, "scrap-sword", 9)).toBe(false);
+    expect(canCraft(inventory, "scrap-sword", 13)).toBe(true);
+    expect(canCraft(inventory, "scrap-sword", 12)).toBe(false);
     expect(canEnchant({ ...inventory, crafted: ["scrap-sword"] }, "scrap-sword", "ember")).toBe(true);
     expect(canEnchant(inventory, "bone-armor", "ember")).toBe(false);
   });

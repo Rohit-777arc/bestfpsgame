@@ -21,9 +21,9 @@ export const EMPTY_LOOT_INVENTORY: LootInventory = {
 };
 
 export const CRAFTING_RECIPES = [
-  { id: "scrap-sword", name: "Scrap Sword", fee: 10, materials: { scrap: 3, bone: 1 }, kind: "sword" },
-  { id: "ember-sword", name: "Ember Sword", fee: 15, materials: { scrap: 2, essence: 2 }, kind: "sword" },
-  { id: "bone-armor", name: "Bone Armor", fee: 20, materials: { bone: 4, scrap: 2 }, kind: "armor" },
+  { id: "scrap-sword", name: "Scrap Sword", fee: 13, materials: { scrap: 3, bone: 1 }, kind: "sword" },
+  { id: "ember-sword", name: "Ember Sword", fee: 19, materials: { scrap: 2, essence: 2 }, kind: "sword" },
+  { id: "bone-armor", name: "Bone Armor", fee: 25, materials: { bone: 4, scrap: 2 }, kind: "armor" },
 ] as const;
 
 export const ENCHANTMENTS = [
@@ -38,6 +38,8 @@ export type LootDrop = {
   inventoryFull?: boolean;
 };
 
+export const ENEMY_BOOK_CHANCE = 0.001;
+
 export function rollDungeonDrop(
   tier: "grunt" | "runner" | "brute" | "enchanter",
   random: () => number = Math.random,
@@ -49,7 +51,7 @@ export function rollDungeonDrop(
   if (tier === "enchanter") materials.essence = 2;
   return {
     materials,
-    book: tier !== "enchanter" && random() < 0.035,
+    book: tier !== "enchanter" && random() < ENEMY_BOOK_CHANCE,
     shard: tier === "enchanter",
   };
 }

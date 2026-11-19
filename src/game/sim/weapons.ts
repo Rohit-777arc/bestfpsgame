@@ -41,7 +41,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   "vector-smg": {
     id: "vector-smg",
     name: "Vector SMG",
-    price: 60,
+    price: 75,
     damage: 18,
     pellets: 1,
     rpm: 900,
@@ -55,7 +55,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   "riot-shotgun": {
     id: "riot-shotgun",
     name: "Riot Shotgun",
-    price: 110,
+    price: 138,
     damage: 13,
     pellets: 8,
     rpm: 75,
@@ -69,7 +69,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   "marksman-rifle": {
     id: "marksman-rifle",
     name: "Marksman Rifle",
-    price: 160,
+    price: 200,
     damage: 70,
     pellets: 1,
     rpm: 150,
@@ -83,7 +83,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   "longbow-sniper": {
     id: "longbow-sniper",
     name: "Longbow Sniper",
-    price: 240,
+    price: 300,
     damage: 150,
     pellets: 1,
     rpm: 42,

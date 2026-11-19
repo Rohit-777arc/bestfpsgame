@@ -6,7 +6,7 @@ export interface PlayerExperience {
 export const EXPERIENCE_PER_LEVEL = 100;
 export const EXPERIENCE_INCREASE_PER_LEVEL = 50;
 export const DUNGEON_WAVES = 5;
-export const DUNGEON_CLEAR_CREDITS = 100;
+export const DUNGEON_CLEAR_CREDITS = 75;
 export const DUNGEON_CLEAR_EXPERIENCE = 100;
 
 export const ENEMY_EXPERIENCE = {
@@ -95,4 +95,9 @@ export function addExperience(progress: PlayerExperience, amount: number): Playe
   }
 
   return { level, experience };
+}
+
+/** Only the gunfight dungeon has a final wave; underground keeps going. */
+export function isFinalDungeonWave(mode: string, wave: number, variant: "gunfight" | "underground" = "gunfight"): boolean {
+  return mode === "dungeon" && variant === "gunfight" && wave >= DUNGEON_WAVES;
 }

@@ -43,10 +43,10 @@ export type WeaponSkinId = (typeof WEAPON_SKINS)[number]["id"];
 
 export const WEAPON_CRATES = WEAPON_SKIN_RARITIES.map((rarity, index) => ({
   rarity,
-  price: [100, 250, 500, 900, 1_500, 2_500, 4_000][index],
+  price: [125, 313, 625, 1_125, 1_875, 3_125, 5_000][index],
 }));
 
-export const LOTTERY_PRICE = 100;
+export const LOTTERY_PRICE = 125;
 export const LOTTERY_PRIZES = [
   { amount: 0, chance: 0.35 },
   { amount: 50, chance: 0.35 },

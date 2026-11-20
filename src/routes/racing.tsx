@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, type MutableRefObject }
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { TopBar } from "@/components/game/TopBar";
-import { createRaceState, raceLap, RACE_LAPS, RACE_TRACK_LENGTH, RAMP_MARKERS, stepRace, stepRival, trackPosition, type RaceEvent, type RaceInput } from "@/game/sim/racing";
+import { createRaceState, raceLap, RACE_LAPS, RACE_TRACK_LENGTH, RAMP_MARKERS, TRACK_RADIUS_Z, stepRace, stepRival, trackPosition, type RaceEvent, type RaceInput, type RaceState } from "@/game/sim/racing";
 import mexicanRaceCarModel from "@/assets/models/mexican-race-car.glb.asset.json";
 import mexicanRivalSedanModel from "@/assets/models/mexican-rival-sedan.glb.asset.json";
 import mexicanRivalHatchbackModel from "@/assets/models/mexican-rival-hatchback.glb.asset.json";
@@ -26,10 +26,9 @@ export const Route = createFileRoute("/racing")({
 });
 
 type RivalState = { id: string; distance: number; lane: number; speed: number; model: string; color: string; impactLock: number };
-type CarRefs = { player: MutableRefObject<THREE.Group | null>; rivals: MutableRefObject<(THREE.Group | null)[]> };
 type RaceSceneProps = {
   input: MutableRefObject<RaceInput>;
-  scoreRef: MutableRefObject<number>;
+  stateRef: MutableRefObject<RaceState>;
   onUpdate: (state: ReturnType<typeof createRaceState>, rivals: RivalState[]) => void;
   onEvent: (event: RaceEvent) => void;
   onReady: () => void;
@@ -55,8 +54,29 @@ function makeTrackGeometry(outer: number, inner: number, y: number) {
     positions.push((radiusX + inner) * sin, y, (radiusZ + inner) * cos);
     if (i < segments) {
       const a = i * 2;
-      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
     }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeDashedCenterline() {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const dashCount = 90;
+  const halfLength = 0.85;
+  for (let i = 0; i < dashCount; i++) {
+    const distance = ((i + 0.5) / dashCount) * RACE_TRACK_LENGTH;
+    const start = trackPosition(distance - halfLength);
+    const end = trackPosition(distance + halfLength);
+    const base = positions.length / 3;
+    positions.push(start.x - 0.12, 0.035, start.z - 0.12, start.x + 0.12, 0.035, start.z + 0.12);
+    positions.push(end.x - 0.12, 0.035, end.z - 0.12, end.x + 0.12, 0.035, end.z + 0.12);
+    indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -97,11 +117,11 @@ function RaceCar({ url, color, scale = 1.45 }: { url: string; color: string; sca
   return <primitive object={model} scale={scale} />;
 }
 
-function RaceScene({ input, scoreRef, onUpdate, onEvent, onReady }: RaceSceneProps) {
+function RaceScene({ input, stateRef, onUpdate, onEvent, onReady }: RaceSceneProps) {
   const { camera } = useThree();
   const car = useRef<THREE.Group>(null);
   const rivals = useRef<(THREE.Group | null)[]>([]);
-  const state = useRef(createRaceState());
+  const state = stateRef;
   const ai = useRef(AI_CARS.map((rival) => ({ ...rival })));
   const road = useMemo(() => makeTrackGeometry(9, -9, 0), []);
   const insideEdge = useMemo(() => makeTrackGeometry(-8.8, -9.5, 0.05), []);
@@ -109,20 +129,17 @@ function RaceScene({ input, scoreRef, onUpdate, onEvent, onReady }: RaceScenePro
   const grass = useMemo(() => makeTrackGeometry(44, 9.4, -0.12), []);
   const curbOuter = useMemo(() => makeTrackGeometry(9.3, 8.85, 0.055), []);
   const curbInner = useMemo(() => makeTrackGeometry(-8.85, -9.3, 0.055), []);
+  const centerline = useMemo(() => makeDashedCenterline(), []);
   const [ready, setReady] = useState(false);
   const lastEmit = useRef(0);
-  const startLights = useRef(false);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => { startLights.current = true; }, 750);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useFrame((_, rawDelta) => {
     const dt = Math.min(rawDelta, 0.05);
     const current = state.current;
     const collision = ai.current.some((rival) => {
-      const gap = Math.abs(rival.distance - current.distance);
+      const playerTrackDistance = current.distance % RACE_TRACK_LENGTH;
+      const rivalTrackDistance = rival.distance % RACE_TRACK_LENGTH;
+      const gap = Math.abs(rivalTrackDistance - playerTrackDistance);
       const wrappedGap = Math.min(gap, RACE_TRACK_LENGTH - gap);
       return rival.impactLock <= 0 && wrappedGap < 3.5 && Math.abs(rival.lane - current.lateral) < 2.3 && current.speed > 15;
     });
@@ -130,7 +147,6 @@ function RaceScene({ input, scoreRef, onUpdate, onEvent, onReady }: RaceScenePro
 
     ai.current.forEach((rival, index) => {
       rival.distance = stepRival(rival.distance, rival.speed, dt);
-      if (rival.distance >= RACE_TRACK_LENGTH * RACE_LAPS) rival.distance -= RACE_TRACK_LENGTH * RACE_LAPS;
       rival.impactLock = Math.max(0, rival.impactLock - dt);
       const progress = (current.distance - rival.distance + RACE_TRACK_LENGTH * RACE_LAPS) % (RACE_TRACK_LENGTH * RACE_LAPS);
       if (progress < 3.2 && Math.abs(rival.lane - current.lateral) < 2.3 && current.speed > 15 && rival.impactLock <= 0) {
@@ -163,9 +179,6 @@ function RaceScene({ input, scoreRef, onUpdate, onEvent, onReady }: RaceScenePro
       camera.lookAt(cameraTarget.x, cameraTarget.y + 1, cameraTarget.z);
     }
 
-    RAMP_MARKERS.forEach((marker) => {
-      if (Math.abs(current.distance % RACE_TRACK_LENGTH - marker) < 0.15 && current.jumpTime > 0.7) scoreRef.current += 0;
-    });
     if (events.length) events.forEach(onEvent);
     if (!ready && car.current) {
       setReady(true);
@@ -201,8 +214,15 @@ function RaceScene({ input, scoreRef, onUpdate, onEvent, onReady }: RaceScenePro
       <mesh geometry={curbInner}>
         <meshStandardMaterial color="#f2e8d7" roughness={0.72} />
       </mesh>
-      {Array.from({ length: 128 }, (_, index) => {
-        const distance = (index / 128) * RACE_TRACK_LENGTH;
+      <mesh rotation-x={-Math.PI / 2} position={[0, -0.14, 0]} receiveShadow>
+        <planeGeometry args={[260, 260]} />
+        <meshStandardMaterial color="#658c47" roughness={0.92} />
+      </mesh>
+      <mesh geometry={centerline}>
+        <meshStandardMaterial color="#ede4d1" roughness={0.82} />
+      </mesh>
+      {Array.from({ length: 64 }, (_, index) => {
+        const distance = (index / 64) * RACE_TRACK_LENGTH;
         const path = trackPosition(distance, index % 2 === 0 ? 15 : -15);
         const isTree = index % 5 === 0;
         return (
@@ -238,11 +258,11 @@ function RaceScene({ input, scoreRef, onUpdate, onEvent, onReady }: RaceScenePro
         <Suspense fallback={null}><RaceCar url={mexicanRaceCarModel.url} color="#f0ad26" scale={1.55} /></Suspense>
         <pointLight position={[0, 0.6, -1.8]} color="#35d9ff" distance={8} intensity={2.2} />
       </group>
-      <mesh position={[0, 0.04, -TRACK_RADIUS_Z - 4]} rotation-y={Math.PI}>
-        <boxGeometry args={[12, 0.12, 0.6]} />
+      <mesh position={[0, 0.04, TRACK_RADIUS_Z]}>
+        <boxGeometry args={[0.6, 0.12, 18]} />
         <meshStandardMaterial color="#f4e9d5" />
       </mesh>
-      <mesh position={[0, 0.16, -TRACK_RADIUS_Z - 4]} rotation-y={Math.PI}>
+      <mesh position={[0, 0.16, TRACK_RADIUS_Z]}>
         <boxGeometry args={[0.3, 0.1, 0.65]} />
         <meshStandardMaterial color="#c84635" />
       </mesh>

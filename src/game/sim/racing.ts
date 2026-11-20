@@ -66,8 +66,9 @@ export function stepRace(state: RaceState, input: RaceInput, delta: number, coll
   state.jumpTime = Math.max(0, state.jumpTime - dt);
 
   const boosting = input.nitro && state.nitro > 0;
-  const topSpeed = boosting || state.boostTime > 0 ? 265 : 195;
-  if (input.throttle > 0) state.speed = Math.min(topSpeed, state.speed + (boosting ? 80 : 58) * dt);
+  const boostActive = boosting || state.boostTime > 0;
+  const topSpeed = boostActive ? 265 : 195;
+  if (input.throttle > 0) state.speed = Math.min(topSpeed, state.speed + (boostActive ? 80 : 58) * dt);
   else if (input.throttle < 0) state.speed = Math.max(0, state.speed - 115 * dt);
   else state.speed = Math.max(0, state.speed - 8 * dt);
   if (boosting) state.nitro = Math.max(0, state.nitro - 33 * dt);
@@ -79,7 +80,6 @@ export function stepRace(state: RaceState, input: RaceInput, delta: number, coll
   if (state.lateral < -9 || state.lateral > 9) {
     state.lateral = Math.max(-9, Math.min(9, state.lateral));
     state.lateralSpeed *= -0.32;
-    if (!collision) events.push("wrecked");
     collision = true;
   }
 
@@ -133,5 +133,6 @@ export function trackPosition(distance: number, lateral = 0): { x: number; z: nu
 }
 
 export function stepRival(distance: number, speedKph: number, delta: number): number {
-  return distance + (Math.max(0, speedKph) / 3.6) * Math.min(Math.max(delta, 0), 0.05);
+  const finishDistance = RACE_TRACK_LENGTH * RACE_LAPS;
+  return Math.min(finishDistance, distance + (Math.max(0, speedKph) / 3.6) * Math.min(Math.max(delta, 0), 0.05));
 }

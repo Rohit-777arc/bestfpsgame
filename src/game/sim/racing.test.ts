@@ -53,13 +53,15 @@ describe("race progress", () => {
     const state = createRaceState();
     state.speed = 160;
     const oldDistance = state.distance;
-    expect(stepRace(state, { throttle: 1, steering: 0, nitro: false, handbrake: false }, 0.05, true)).toContain("wrecked");
+    const crashEvents = stepRace(state, { throttle: 1, steering: 0, nitro: false, handbrake: false }, 0.05, true);
+    expect(crashEvents.filter((event) => event === "wrecked")).toHaveLength(1);
     expect(state.speed).toBeLessThan(160);
     expect(state.distance).toBeGreaterThan(oldDistance);
     expect(stepRival(20, 180, 0.05)).toBeGreaterThan(20);
+    expect(stepRival(RACE_TRACK_LENGTH * RACE_LAPS - 1, 180, 0.05)).toBeGreaterThan(RACE_TRACK_LENGTH * RACE_LAPS);
   });
 
-  it("keeps track positions finite and wraps rival positions through the loop", () => {
+  it("keeps track positions finite across laps", () => {
     const start = trackPosition(0);
     const afterLoop = trackPosition(RACE_TRACK_LENGTH);
     expect(start.x).toBeCloseTo(afterLoop.x);

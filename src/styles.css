@@ -2677,6 +2677,147 @@
   }
 }
 
+.race-topline {
+  position: absolute;
+  z-index: 5;
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.race-badge,
+.race-lap,
+.race-meter,
+.race-controls {
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--background) 82%, transparent);
+  color: var(--foreground);
+  backdrop-filter: blur(8px);
+}
+.race-badge,
+.race-lap {
+  min-width: 5.5rem;
+  padding: .55rem .8rem;
+  text-align: center;
+  clip-path: polygon(0 0, 100% 0, 100% 78%, 88% 100%, 0 100%);
+}
+.race-badge span,
+.race-lap span,
+.race-meter span {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+.race-badge strong,
+.race-lap strong {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+.race-badge small,
+.race-lap i {
+  color: var(--muted-foreground);
+  font-size: .72rem;
+  font-style: normal;
+}
+.race-speed strong { color: var(--primary); }
+.race-callout {
+  position: absolute;
+  z-index: 5;
+  top: 23%;
+  left: 50%;
+  max-width: calc(100% - 2rem);
+  transform: translateX(-50%) skew(-7deg);
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 4vw, 3.25rem);
+  font-weight: 1000;
+  text-align: center;
+  text-shadow: 0 3px 12px oklch(0 0 0 / .65);
+  pointer-events: none;
+}
+.race-callout-crash { color: var(--destructive); animation: race-impact .24s ease-in-out infinite alternate; }
+@keyframes race-impact { to { transform: translateX(-50%) skew(-7deg) scale(1.08); } }
+.race-meter-stack {
+  position: absolute;
+  z-index: 5;
+  right: 1rem;
+  bottom: 1rem;
+  display: grid;
+  width: min(19rem, calc(100% - 2rem));
+  gap: .5rem;
+  pointer-events: none;
+}
+.race-meter { padding: .6rem .75rem; }
+.race-meter > div:first-child { display: flex; justify-content: space-between; align-items: baseline; }
+.race-meter strong { font-family: var(--font-display); font-size: 1.05rem; }
+.race-meter-track { height: .52rem; margin-top: .35rem; overflow: hidden; background: var(--muted); }
+.race-meter-track i { display: block; height: 100%; transition: width .12s linear; }
+.race-meter-nitro i { background: var(--primary); box-shadow: 0 0 .8rem color-mix(in oklch, var(--primary) 70%, transparent); }
+.race-meter-drift i { background: var(--accent); }
+.race-meter small { display: block; margin-top: .3rem; color: var(--muted-foreground); font-size: .6rem; }
+.race-controls {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .3rem;
+  width: max-content;
+  max-width: calc(100% - 23rem);
+  padding: .55rem .7rem;
+  font-size: .7rem;
+  font-weight: 700;
+}
+.race-controls kbd { padding: .1rem .35rem; border: 1px solid var(--border); background: var(--muted); font: inherit; }
+.race-nameplate {
+  position: absolute;
+  z-index: 4;
+  padding: .25rem .45rem;
+  border-left: 2px solid var(--primary);
+  background: color-mix(in oklch, var(--background) 78%, transparent);
+  color: var(--foreground);
+  font-size: .65rem;
+  font-weight: 900;
+  pointer-events: none;
+}
+.race-nameplate span { margin-right: .25rem; color: var(--primary); }
+.race-finish {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  text-align: center;
+}
+.race-finish > div { width: min(32rem, 100%); padding: 2rem; border: 1px solid var(--border); background: var(--card); color: var(--card-foreground); }
+.race-finish h1 { margin: .35rem 0; font-family: var(--font-display); font-size: 2rem; }
+.race-finish p { margin-bottom: 1.2rem; color: var(--muted-foreground); }
+.racing-impact { animation: race-shell-shake .22s linear 2; }
+@keyframes race-shell-shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@media (max-width: 760px) {
+  .race-topline { top: .5rem; left: .5rem; right: .5rem; }
+  .race-meter-stack { right: .5rem; bottom: .5rem; width: min(11rem, 43vw); }
+  .race-meter { padding: .45rem; }
+  .race-controls { left: .5rem; bottom: .5rem; transform: none; justify-content: flex-start; width: min(56vw, 19rem); max-width: none; font-size: .58rem; }
+  .race-nameplate { display: none; }
+  .race-callout { top: 19%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .race-callout-crash, .racing-impact { animation: none; }
+  .race-meter-track i { transition: none; }
+}
+
 /* Physical crate opening: anticipation, lid lift, then the collected finish. */
 .crate-box {
   position: relative;

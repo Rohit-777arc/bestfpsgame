@@ -9,4 +9,4 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 
-- Keep FPS simulation rules in React/Three-free `src/game/sim` modules, with mutable frame state in refs and one shared game stepper, so gameplay stays testable and responsive.
+- Keep FPS and racing rules in React/Three-free `src/game/sim` modules, with mutable frame state in refs and one shared game stepper per scene, so gameplay stays testable and responsive.

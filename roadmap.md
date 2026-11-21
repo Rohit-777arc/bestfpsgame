@@ -17,4 +17,5 @@ Approved plan: .lovable/plan/mexican-standof-game-hub-plan-2026-11-04.md
 - [ ] 13. Fix dungeon launch freezing on the pause screen and verify deployment into gameplay
 - [ ] 14. Ask PC or mobile before starting and present matching controls, including touch joysticks
 - [ ] 15. Add wave-smart armed enemies and fix white hit flashes
-- [x] 16. Upgrade 3D racing: moving rivals, responsive forward driving, three-lap circuit, drift meter, nitro ramps, and crash effects
+- [ ] 16. Finish and verify the 3D race: moving rivals, responsive forward driving, three-lap circuit, drift meter, nitro ramps, crash effects, and visible cars
+- [ ] 17. Fix the blank racing screen and confirm the car model renders in the preview

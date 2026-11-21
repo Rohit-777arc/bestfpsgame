@@ -60,7 +60,7 @@ export function AccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="mso-panel max-w-md border-[3px]">
+      <DialogContent className="mso-panel max-w-md border-[3px]" data-first-visit={firstVisit ? "true" : undefined}>
         <DialogHeader>
           <DialogTitle className="mso-display text-3xl text-primary">
             {firstVisit ? "WELCOME, GUNSLINGER" : p.kind === "account" ? "YOUR ACCOUNT" : "SAVE YOUR PROGRESS"}

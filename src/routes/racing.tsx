@@ -255,7 +255,7 @@ function RaceScene({ input, stateRef, onUpdate, onEvent, onReady }: RaceScenePro
         </group>
       ))}
       <group ref={car}>
-        <Suspense fallback={null}><RaceCar url={mexicanRaceCarModel.url} color="#f0ad26" scale={1.55} /></Suspense>
+        <Suspense fallback={null}><RaceCar url={mexicanRivalHatchbackModel.url} color="#f0ad26" scale={1.55} /></Suspense>
         <pointLight position={[0, 0.6, -1.8]} color="#35d9ff" distance={8} intensity={2.2} />
       </group>
       <mesh position={[0, 0.04, TRACK_RADIUS_Z]}>
@@ -273,9 +273,8 @@ function RaceScene({ input, stateRef, onUpdate, onEvent, onReady }: RaceScenePro
 function RacingPage() {
   const sim = useRef(createRaceState());
   const input = useRef<RaceInput>({ throttle: 0, steering: 0, nitro: false, handbrake: false });
-  const scoreRef = useRef(0);
   const keys = useRef<Record<string, boolean>>({});
-  const [hud, setHud] = useState({ speed: 0, nitro: 100, lap: 1, drift: 0, driftScore: 0, position: 4, title: "LIGHTS OUT! GO!", finished: false, impact: 0, boost: 0, ready: false });
+  const [hud, setHud] = useState({ speed: 0, nitro: 100, lap: 1, drift: 0, driftScore: 0, position: 4, title: "", finished: false, impact: 0, boost: 0, ready: false });
   const [rivalHud, setRivalHud] = useState<RivalState[]>([]);
 
   useEffect(() => {
@@ -328,8 +327,7 @@ function RacingPage() {
   const reset = () => {
     sim.current = createRaceState();
     input.current = { throttle: 0, steering: 0, nitro: false, handbrake: false };
-    scoreRef.current = 0;
-    setHud({ speed: 0, nitro: 100, lap: 1, drift: 0, driftScore: 0, position: 4, title: "LIGHTS OUT! GO!", finished: false, impact: 0, boost: 0, ready: true });
+    setHud({ speed: 0, nitro: 100, lap: 1, drift: 0, driftScore: 0, position: 4, title: "", finished: false, impact: 0, boost: 0, ready: true });
     setRivalHud(AI_CARS.map((rival) => ({ ...rival })));
   };
 
@@ -338,14 +336,14 @@ function RacingPage() {
       <TopBar />
       <main className={`racing-3d-shell ${hud.impact > 0 ? "racing-impact" : ""}`} data-scene-ready={hud.ready ? "1" : undefined}>
         <Canvas shadows dpr={[1, 1.6]} camera={{ position: [0, 7, 68], fov: 62 }} gl={{ antialias: true, powerPreference: "high-performance" }}>
-          <RaceScene input={input} scoreRef={scoreRef} onUpdate={updateHud} onEvent={showEvent} onReady={() => setHud((old) => ({ ...old, ready: true }))} />
+          <RaceScene input={input} stateRef={sim} onUpdate={updateHud} onEvent={showEvent} onReady={() => setHud((old) => ({ ...old, ready: true }))} />
         </Canvas>
         <header className="race-topline">
           <div className="race-badge"><span>POSITION</span><strong>{hud.position}<small> / 4</small></strong></div>
           <div className="race-lap"><span>LAP</span><strong>{hud.finished ? RACE_LAPS : hud.lap}</strong><i> / {RACE_LAPS}</i></div>
           <div className="race-badge race-speed"><span>SPEED</span><strong>{Math.round(hud.speed)}<small> KM/H</small></strong></div>
         </header>
-        <div className={`race-callout ${hud.impact > 0 ? "race-callout-crash" : ""}`} aria-live="polite">{hud.title}</div>
+        {hud.title && <div className={`race-callout ${hud.impact > 0 ? "race-callout-crash" : ""}`} aria-live="polite">{hud.title}</div>}
         {rivalHud.map((rival, index) => (
           <div key={rival.id} className="race-nameplate" style={{ left: `${37 + index * 9}%`, top: `${33 + (index % 2) * 6}%` }}>
             <span>{index + 2}</span> {rival.id}
@@ -366,6 +364,6 @@ function RacingPage() {
   );
 }
 
-useGLTF.preload(mexicanRaceCarModel.url);
+useGLTF.preload(mexicanRivalHatchbackModel.url);
 useGLTF.preload(mexicanRivalSedanModel.url);
 useGLTF.preload(mexicanRivalHatchbackModel.url);

@@ -58,7 +58,7 @@ describe("race progress", () => {
     expect(state.speed).toBeLessThan(160);
     expect(state.distance).toBeGreaterThan(oldDistance);
     expect(stepRival(20, 180, 0.05)).toBeGreaterThan(20);
-    expect(stepRival(RACE_TRACK_LENGTH * RACE_LAPS - 1, 180, 0.05)).toBeGreaterThan(RACE_TRACK_LENGTH * RACE_LAPS);
+    expect(stepRival(RACE_TRACK_LENGTH * RACE_LAPS - 1, 180, 0.05)).toBe(RACE_TRACK_LENGTH * RACE_LAPS);
   });
 
   it("keeps track positions finite across laps", () => {

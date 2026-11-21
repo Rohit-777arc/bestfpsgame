@@ -2742,6 +2742,16 @@
   pointer-events: none;
 }
 .race-callout-crash { color: var(--destructive); animation: race-impact .24s ease-in-out infinite alternate; }
+body:has(.racing-3d-shell) [data-dialog-overlay="true"] {
+  background: color-mix(in oklch, var(--background) 16%, transparent) !important;
+}
+body:has(.racing-3d-shell) [data-first-visit="true"] {
+  top: 5rem;
+  right: 1.5rem;
+  left: auto;
+  width: min(28rem, calc(100vw - 2rem));
+  translate: none;
+}
 @keyframes race-impact { to { transform: translateX(-50%) skew(-7deg) scale(1.08); } }
 .race-meter-stack {
   position: absolute;
@@ -2812,6 +2822,7 @@
   .race-controls { left: .5rem; bottom: .5rem; transform: none; justify-content: flex-start; width: min(56vw, 19rem); max-width: none; font-size: .58rem; }
   .race-nameplate { display: none; }
   .race-callout { top: 19%; }
+  body:has(.racing-3d-shell) [data-first-visit="true"] { top: 50%; right: auto; left: 50%; translate: -50% -50%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .race-callout-crash, .racing-impact { animation: none; }

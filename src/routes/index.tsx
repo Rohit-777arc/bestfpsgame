@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 import { TopBar } from "@/components/game/TopBar";
 import { useProgress } from "@/components/game/useProgress";
-import { WEAPONS } from "@/game/sim/weapons";
+import { WEAPONS, WEAPON_IDS } from "@/game/sim/weapons";
+import { MAP_IDS } from "@/game/sim/maps";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -73,8 +74,8 @@ function Hub() {
         <section className="hub-hero relative overflow-hidden">
           <div className="hub-hero-copy">
             <div className="hub-eyebrow">
-              <span className="hub-live-dot" /> SEASON 01 <span className="hub-eyebrow-divider" /> 3
-              MAPS · 5 WEAPONS
+              <span className="hub-live-dot" /> SEASON 01 <span className="hub-eyebrow-divider" /> {MAP_IDS.length}
+              MAPS · {WEAPON_IDS.length} WEAPONS
             </div>
             <h1 className="hub-title">
               MEXICAN
@@ -150,7 +151,7 @@ function Hub() {
           <Link to="/maps" className="mso-card hub-info-card">
             <div>
               <div className="hub-info-kicker">DEPLOYMENT ZONES</div>
-              <div className="mso-display text-3xl">Desert · Neon · Frozen</div>
+              <div className="mso-display text-3xl">Desert · Neon · Frozen · Jungle · Lava</div>
               <div className="text-sm text-muted-foreground">Pick any map in every mode.</div>
             </div>
             <span className="hub-info-link">

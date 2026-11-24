@@ -48,4 +48,6 @@ export const MAP_SWATCH: Record<string, string> = {
   desert: "linear-gradient(160deg,#f2d7a6,#c9a36b 60%,#8a5a2b)",
   neon: "linear-gradient(160deg,#0b0d1a,#2a2f5e 50%,#ff3b6b)",
   frozen: "linear-gradient(160deg,#ffffff,#cfe0ee 50%,#7e99ab)",
+  jungle: "linear-gradient(160deg,#cde7b4,#4f7d30 55%,#2e4220)",
+  lava: "linear-gradient(160deg,#2a1410,#7a2a18 55%,#ff5a1a)",
 };

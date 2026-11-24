@@ -105,10 +105,104 @@ export function Scene({ map }: { map: MapDef }) {
           </mesh>
         ))}
 
-      {map.night &&
+      {map.trees && <JungleProps />}
+      {map.lava && <LavaProps />}
+
+      {map.neonSigns &&
         CRATES.slice(0, 6).map((c, i) => (
           <pointLight key={"pl" + i} position={[c.x, c.s + 1.2, c.z]} color={SIGNS[i % 4].color} intensity={6} distance={9} />
         ))}
+    </>
+  );
+}
+
+// Decorative trees around the jungle arena edge (walk-through, outside the crate rings).
+const TREES = Array.from({ length: 22 }, (_, i) => {
+  const a = (i / 22) * Math.PI * 2 + (i % 3) * 0.07;
+  const r = 31 + (i % 4) * 2;
+  return { x: Math.cos(a) * r, z: Math.sin(a) * r, h: 7 + (i % 5) * 1.6, s: 2.2 + (i % 3) * 0.6 };
+});
+
+function JungleProps() {
+  return (
+    <>
+      {TREES.map((t, i) => (
+        <group key={i} position={[t.x, 0, t.z]} rotation-y={i * 1.3}>
+          <mesh position={[0, t.h / 2, 0]} castShadow>
+            <cylinderGeometry args={[0.28, 0.5, t.h, 8]} />
+            <meshStandardMaterial color="#5a4128" roughness={1} />
+          </mesh>
+          {[0, 1, 2].map((k) => (
+            <mesh key={k} position={[(k - 1) * 0.6, t.h - k * 0.9, (k % 2) * 0.5]} castShadow>
+              <icosahedronGeometry args={[t.s - k * 0.35, 1]} />
+              <meshStandardMaterial color={["#3f6b2a", "#4d7d30", "#36602a"][k]} roughness={0.95} flatShading />
+            </mesh>
+          ))}
+          <mesh position={[0.4, t.h * 0.45, 0.3]}>
+            <boxGeometry args={[0.06, t.h * 0.7, 0.06]} />
+            <meshStandardMaterial color="#4f7a2c" />
+          </mesh>
+        </group>
+      ))}
+      {/* moss patches and ferns */}
+      {Array.from({ length: 30 }, (_, i) => (
+        <mesh key={"f" + i} position={[Math.cos(i * 2.1) * (8 + (i * 7) % 26), 0.25, Math.sin(i * 2.1) * (8 + (i * 7) % 26)]} rotation-y={i}>
+          <coneGeometry args={[0.5 + (i % 3) * 0.2, 0.6, 5]} />
+          <meshStandardMaterial color={i % 2 ? "#4f8a34" : "#3f7029"} flatShading />
+        </mesh>
+      ))}
+      {/* mossy ruin tower in one corner */}
+      <group position={[-30, 0, -30]}>
+        {[0, 1, 2, 3].map((k) => (
+          <mesh key={k} position={[0, 1.5 + k * 3, 0]} castShadow receiveShadow>
+            <boxGeometry args={[6 - k * 0.8, 3, 6 - k * 0.8]} />
+            <meshStandardMaterial color={k % 2 ? "#6f7a5a" : "#5d6a48"} roughness={1} />
+          </mesh>
+        ))}
+      </group>
+    </>
+  );
+}
+
+const LAVA_POOLS = [
+  { x: 28, z: 28, r: 4.5 },
+  { x: -28, z: 27, r: 3.8 },
+  { x: 29, z: -27, r: 4 },
+  { x: -27, z: -29, r: 4.6 },
+  { x: 0, z: 33, r: 3.2 },
+];
+
+function LavaProps() {
+  return (
+    <>
+      {LAVA_POOLS.map((p, i) => (
+        <group key={i} position={[p.x, 0, p.z]}>
+          <mesh rotation-x={-Math.PI / 2} position={[0, 0.03, 0]}>
+            <circleGeometry args={[p.r + 0.6, 24]} />
+            <meshStandardMaterial color="#1a0e0a" roughness={1} />
+          </mesh>
+          <mesh rotation-x={-Math.PI / 2} position={[0, 0.05, 0]}>
+            <circleGeometry args={[p.r, 24]} />
+            <meshStandardMaterial color="#ff5a1a" emissive="#ff4a10" emissiveIntensity={2.4} toneMapped={false} />
+          </mesh>
+          <pointLight position={[0, 1.4, 0]} color="#ff6a2a" intensity={14} distance={14} decay={1.6} />
+        </group>
+      ))}
+      {Array.from({ length: 10 }, (_, i) => {
+        const a = (i / 10) * Math.PI * 2 + 0.3;
+        return (
+          <group key={"p" + i} position={[Math.cos(a) * 35, 0, Math.sin(a) * 35]}>
+            <mesh position={[0, 4, 0]} castShadow receiveShadow>
+              <cylinderGeometry args={[0.9, 1.1, 8, 10]} />
+              <meshStandardMaterial color="#5a4038" roughness={0.95} />
+            </mesh>
+            <mesh position={[0, 8.2, 0]}>
+              <boxGeometry args={[2.4, 0.5, 2.4]} />
+              <meshStandardMaterial color="#4a3530" roughness={1} />
+            </mesh>
+          </group>
+        );
+      })}
     </>
   );
 }

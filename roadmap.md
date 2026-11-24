@@ -19,3 +19,11 @@ Approved plan: .lovable/plan/mexican-standof-game-hub-plan-2026-11-04.md
 - [ ] 15. Add wave-smart armed enemies and fix white hit flashes
 - [ ] 16. Finish and verify the 3D race: visible car, correct ramp direction, polished HUD/speedometer, grass slowdown, realistic trees, three maps, and full-speed takedowns
 - [x] 17. Fix the blank racing screen and confirm the car model renders in the preview
+- [ ] 18. Port joyfulblasters guns into the Armory (keep the original 5)
+- [ ] 19. Port joyfulblasters maps (Jungle Tower, Lava Temple) alongside the original 3
+- [ ] 20. Port joyfulblasters drill modes that fit the FPS engine (Range, Long Shots, Bot Duel)
+- [ ] 21. Improve GUI on every page/tab, incl. Armory tabs
+- [ ] 22. Crafting animation (wooden axe chopping) and enchanting animation (anvil drop)
+- [ ] 23. Later: joyfulblasters helicopter, tank, jet, Firefighter, Commando, Parkour, Grenade Toss, melee weapons, scopes
+- [ ] 24. Motorcycle mode: checkpoint time trials on a bike (from joyfulblasters)
+- [ ] 25. Remodel the 3D car race to look and feel better

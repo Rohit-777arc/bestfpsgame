@@ -26,6 +26,8 @@ export type EnemyRuntime = {
   moving: boolean;
   goalX: number;
   goalZ: number;
+  burnUntil?: number;
+  slowUntil?: number;
 };
 
 const G = {

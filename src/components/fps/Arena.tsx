@@ -7,7 +7,7 @@ import * as THREE from "three";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { MAPS, type MapId } from "@/game/sim/maps";
 import { ARENA, CRATES } from "@/game/sim/arena";
-import { WEAPONS, shotInterval, type WeaponId } from "@/game/sim/weapons";
+import { WEAPONS, BURN_DPS, BURN_SECONDS, FREEZE_SECONDS, FREEZE_SLOW, closeRangeMultiplier, splashDamage, weaponRange, shotInterval, type WeaponId } from "@/game/sim/weapons";
 import { enemyBehaviorForWave, scaledTier, scaledUndergroundTier, spawnPlan, undergroundSpawnPlan, UNDERGROUND_ROOM_HALF_SIZE, type Difficulty, type DungeonVariant } from "@/game/sim/waves";
 import { Scene, UndergroundScene } from "./Scene";
 import { EnemyMesh, RemoteMesh, type EnemyRuntime, type RemoteRuntime } from "./Actors";
@@ -20,6 +20,7 @@ import { createUndergroundRoom, stepUndergroundRoom, canLeaveUndergroundRoom, un
 import { isFinalDungeonWave, DUNGEON_WAVES, enemyExperience } from "@/game/sim/progression";
 import { playExperiencePickup, playLevelUp } from "@/game/audio";
 import { isCoordinator, playerId, sendEvent, sendState, type NetBus, type NetEvent, type RosterEntry } from "@/game/net";
+import { DRILLS, drillSpawnRadius, drillTargetCount, type DrillId } from "@/game/sim/drills";
 import { HOTBAR_ITEMS, type HotbarInventory } from "@/game/sim/hotbar";
 import { getWeaponSkin, type WeaponSkinId } from "@/game/sim/gacha";
 import type { AvatarColors } from "@/game/sim/avatar";
@@ -45,6 +46,7 @@ export interface ArenaProps {
   map: MapId;
   difficulty: Difficulty;
   trainLevel?: number; // 1..5
+  drill?: DrillId;
   weapon: WeaponId;
   playerName: string;
   credits: number;
@@ -161,6 +163,9 @@ function World(
 ) {
   const { mode, difficulty, net, api } = props;
   const underground = mode === "dungeon" && props.dungeonVariant === "underground";
+  const drill = DRILLS[props.drill ?? "range"];
+  const botDrill = mode === "train" && drill.armed;
+  const hostile = mode === "dungeon" || mode === "coop" || botDrill;
   const weapon = WEAPONS[props.weapon];
   const reducedDamage = (damage: number) =>
     Math.max(1, Math.round(damage * (1 - (props.armourReduction ?? 0) / 100)));
@@ -186,7 +191,7 @@ function World(
   const flash = useRef<THREE.PointLight>(null);
   const fx = useRef<THREE.Group>(null);
   const tracers = useRef<{ m: THREE.Mesh; dir: THREE.Vector3; left: number }[]>([]);
-  const sparks = useRef<{ m: THREE.Mesh; life: number }[]>([]);
+  const sparks = useRef<{ m: THREE.Mesh; life: number; size: number }[]>([]);
   const ray = useMemo(() => new THREE.Raycaster(), []);
 
   // enemies
@@ -274,12 +279,12 @@ function World(
       return {
         id,
         tier,
-        hp: mode === "train" ? 1 : s.hp,
-        max: mode === "train" ? 1 : s.hp,
+        hp: mode === "train" && !botDrill ? 1 : s.hp,
+        max: mode === "train" && !botDrill ? 1 : s.hp,
         x,
         z,
         ry: 0,
-        speed: mode === "train" ? trainSpeed : s.speed,
+        speed: mode === "train" && !botDrill ? (drill.moving ? trainSpeed : 0) : s.speed,
         damage: s.damage,
         reach: s.reach,
         cd: 1,
@@ -295,7 +300,7 @@ function World(
         goalZ: (Math.random() - 0.5) * ARENA * 1.6,
       };
     },
-    [difficulty, mode, underground, props.trainLevel],
+    [difficulty, mode, underground, props.trainLevel, botDrill, drill.moving],
   );
 
   const syncEnemyKeys = () => setEnemyKeys(enemies.current.map((e) => `${wave.current}:${e.id}`));
@@ -342,15 +347,15 @@ function World(
   );
 
   const startTraining = useCallback(() => {
-    const n = 3 + (props.trainLevel ?? 1);
+    const n = drillTargetCount(drill.id, props.trainLevel ?? 1);
     enemies.current = Array.from({ length: n }, (_, i) => {
       const a = Math.random() * Math.PI * 2;
-      const r = 10 + Math.random() * 20;
+      const r = drillSpawnRadius(drill.id, Math.random());
       return makeEnemy(i, "grunt", Math.cos(a) * r, Math.sin(a) * r);
     });
     syncEnemyKeys();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [makeEnemy, props.trainLevel]);
+  }, [makeEnemy, props.trainLevel, drill.id]);
 
   // ---- begin / restart ----
   const begin = useCallback(() => {
@@ -367,10 +372,10 @@ function World(
     setRoomBookVisible(false);
     experienceOrbMeshes.current.clear();
     setExperienceOrbKeys([]);
-    timeLeft.current = TRAIN_TIME;
+    timeLeft.current = mode === "train" ? drill.seconds : TRAIN_TIME;
     duelScore.current = {};
     respawn();
-    api.patch({ ...initialHud(weapon.mag), locked: touchMode.current });
+    api.patch({ ...initialHud(weapon.mag), time: timeLeft.current, locked: touchMode.current });
     if (mode === "train") startTraining();
     else if (mode === "dungeon") startWave(1, Math.floor(Math.random() * 1e9));
     else if (mode === "coop") {
@@ -677,7 +682,22 @@ function World(
     );
     m.position.copy(at);
     fx.current?.add(m);
-    sparks.current.push({ m, life: 0.3 });
+    sparks.current.push({ m, life: 0.3, size: 1 });
+  }
+
+  function addBlast(at: THREE.Vector3, radius: number, color: string) {
+    const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color, transparent: true }));
+    m.position.copy(at);
+    fx.current?.add(m);
+    sparks.current.push({ m, life: 0.3, size: radius * 0.9 });
+  }
+
+  function damageEnemy(en: EnemyRuntime, dmg: number) {
+    if (!en.alive || dmg <= 0) return;
+    en.hp -= dmg;
+    if (weapon.effect === "burn") en.burnUntil = clock.current + BURN_SECONDS;
+    if (weapon.effect === "freeze") en.slowUntil = clock.current + FREEZE_SECONDS;
+    if (en.hp <= 0) killEnemy(en, true);
   }
 
   function killEnemy(en: EnemyRuntime, mine: boolean) {
@@ -687,7 +707,7 @@ function World(
     if (mine) {
       kills.current++;
       props.statsRef.current.kills++;
-      api.feed(`${props.playerName} ▸ ${mode === "train" ? "DUMMY" : en.tier.toUpperCase()}`);
+      api.feed(`${props.playerName} ▸ ${mode === "train" ? (botDrill ? "BOT" : "DUMMY") : en.tier.toUpperCase()}`);
       if (mode === "dungeon" && underground) props.onDungeonKill?.(en.tier);
       if (mode === "coop") {
         sendEvent(net?.channelRef.current ?? null, {
@@ -703,12 +723,13 @@ function World(
     if (mode === "train") {
       api.patch({ score: kills.current, kills: kills.current });
       setTimeout(() => {
+        if (over.current) return;
         const a = Math.random() * Math.PI * 2;
-        const r = 8 + Math.random() * 25;
+        const r = drillSpawnRadius(drill.id, Math.random());
         const fresh = makeEnemy(nextEnemyId.current++, "grunt", Math.cos(a) * r, Math.sin(a) * r);
         enemies.current = enemies.current.filter((x) => x !== en).concat(fresh);
         syncEnemyKeys();
-      }, 900);
+      }, botDrill ? 2200 : 900);
     } else {
       api.patch({
         kills: kills.current,
@@ -731,14 +752,31 @@ function World(
     for (let p = 0; p < weapon.pellets; p++) {
       const dir = new THREE.Vector3((Math.random() - 0.5) * 2 * spread, (Math.random() - 0.5) * 2 * spread, -1).normalize().applyQuaternion(camera.quaternion);
       ray.set(camera.position, dir);
-      ray.far = 160;
+      ray.far = weaponRange(weapon);
       const hit = ray.intersectObjects(scene.children, true).find((h) => {
         const u = h.object.userData;
         if (u.enemyId !== undefined) return enemies.current.some((e) => e.id === u.enemyId && e.alive);
         if (u.remoteId !== undefined) return mode === "duel";
         return !!u.solid;
       });
-      const end = hit ? hit.point.clone() : camera.position.clone().addScaledVector(dir, 150);
+      const end = hit ? hit.point.clone() : camera.position.clone().addScaledVector(dir, Math.min(150, weaponRange(weapon)));
+      if (weapon.aoe) {
+        // Rockets explode where they land and splash everything nearby.
+        addBlast(end, weapon.aoe, "#ff8a3a");
+        for (const en of enemies.current) {
+          if (!en.alive) continue;
+          const d = Math.hypot(en.x - end.x, en.z - end.z, Math.max(0, end.y - 2));
+          const splash = splashDamage(weapon, d);
+          if (splash > 0) {
+            landed = true;
+            damageEnemy(en, splash);
+          }
+        }
+      }
+      if (weapon.damage === 0) {
+        // Confetti: colourful puffs, no damage.
+        addBlast(end, 0.6, ["#ff5fb0", "#5fd0ff", "#ffe04a", "#7cff5f"][Math.floor(Math.random() * 4)]!);
+      }
       if (p < 3) {
         const m = new THREE.Mesh(bulletGeo, bulletMat);
         m.position.copy(muzzle);
@@ -750,14 +788,14 @@ function World(
       if (!hit) continue;
       const u = hit.object.userData;
       const headshot = hit.point.y > 1.75;
-      const dmg = Math.round(weapon.damage * (headshot ? 1.5 : 1));
+      const dmg = Math.round(weapon.damage * (headshot ? 1.5 : 1) * closeRangeMultiplier(weapon, hit.distance));
+      if (weapon.damage === 0) continue;
       if (u.enemyId !== undefined) {
         const en = enemies.current.find((e) => e.id === u.enemyId);
         if (en && en.alive) {
           landed = true;
-          en.hp -= dmg;
           addSpark(end, true);
-          if (en.hp <= 0) killEnemy(en, true);
+          if (!weapon.aoe) damageEnemy(en, dmg);
         }
       } else if (u.remoteId !== undefined && mode === "duel") {
         landed = true;
@@ -933,8 +971,8 @@ function World(
         const acc = shots.current ? Math.round((hits.current / shots.current) * 100) : 0;
         api.patch({
           over: {
-            title: "DRILL COMPLETE",
-            lines: [`${kills.current} dummies down`, `${acc}% accuracy`, `${shots.current} shots fired`],
+            title: `${drill.name.toUpperCase()} COMPLETE`,
+            lines: [`${kills.current} ${botDrill ? "bots" : "targets"} down`, `${acc}% accuracy`, `${shots.current} shots fired`],
           },
         });
       }
@@ -1011,10 +1049,17 @@ function World(
         e.moving = false;
         continue;
       }
+      if (e.burnUntil && clock.current < e.burnUntil) {
+        e.hp -= BURN_DPS * dt;
+        if (e.hp <= 0) {
+          killEnemy(e, true);
+          continue;
+        }
+      }
       let gx = e.goalX;
       let gz = e.goalZ;
       let chasing: { x: number; z: number; local: boolean } | null = null;
-      if (mode !== "train" && targets.length) {
+      if ((mode !== "train" || botDrill) && targets.length) {
         chasing = targets.reduce((a, b) => (Math.hypot(b.x - e.x, b.z - e.z) < Math.hypot(a.x - e.x, a.z - e.z) ? b : a));
         gx = chasing.x;
         gz = chasing.z;
@@ -1024,7 +1069,7 @@ function World(
       const dist = Math.hypot(dx, dz);
       e.cd -= dt;
       e.attackCd -= dt;
-      if ((mode === "dungeon" || mode === "coop") && !underground && !dead.current) {
+      if (hostile && !underground && !dead.current) {
         const shotDx = me.x - e.x;
         const shotDz = me.z - e.z;
         const shotDistance = Math.hypot(shotDx, shotDz);
@@ -1060,7 +1105,11 @@ function World(
             if (hp.current <= 0) {
               dead.current = true;
               props.statsRef.current.deaths++;
-              if (mode === "dungeon") {
+              if (botDrill) {
+                over.current = true;
+                document.exitPointerLock?.();
+                api.patch({ over: { title: "BOT DUEL LOST", lines: [`${kills.current} bots down`, "Try a lower speed level or a stronger gun"] } });
+              } else if (mode === "dungeon") {
                 over.current = true;
                 document.exitPointerLock?.();
                 api.patch((h) => ({
@@ -1172,7 +1221,7 @@ function World(
       }
       let moveX = dx;
       let moveZ = dz;
-      if (chasing && (mode === "dungeon" || mode === "coop") && !underground && dist > 0.01) {
+      if (chasing && hostile && !underground && dist > 0.01) {
         const preferred = e.tier === "brute" ? 8 : e.tier === "runner" ? 12 : 10;
         const radial = THREE.MathUtils.clamp((dist - preferred) / Math.max(dist, 1), -0.7, 1);
         const side = Math.sin(clock.current * 0.9 + e.phase) * e.strafe;
@@ -1180,7 +1229,7 @@ function World(
         moveZ = dz * radial + (dx / dist) * side;
       }
       const moveLength = Math.max(0.001, Math.hypot(moveX, moveZ));
-      const step = e.speed * dt;
+      const step = e.speed * dt * (e.slowUntil && clock.current < e.slowUntil ? FREEZE_SLOW : 1);
       const nx = e.x + (moveX / moveLength) * step;
       const nz = e.z + (moveZ / moveLength) * step;
       const hitX = underground ? undergroundBlocked(nx, e.z, roomState.current.doorProgress, 0.45) : blocked(nx, e.z, 0, 0.45);
@@ -1292,7 +1341,7 @@ function World(
     });
     sparks.current = sparks.current.filter((s) => {
       s.life -= dt;
-      s.m.scale.setScalar(1 + (0.3 - s.life) * 8);
+      s.m.scale.setScalar((1 + (0.3 - s.life) * 8) * s.size);
       (s.m.material as THREE.MeshBasicMaterial).opacity = Math.max(s.life / 0.3, 0);
       if (s.life <= 0) {
         fx.current?.remove(s.m);
@@ -1585,7 +1634,7 @@ export function Arena(props: ArenaProps) {
           <div className="flex flex-col gap-2">
             <div className="fps-mode-chip">
               <span className="fps-status-dot" />
-              <span>{props.mode === "train" ? "TRAINING" : props.mode === "duel" ? "1V1 DUEL" : props.mode === "coop" ? "CO-OP" : props.dungeonVariant === "underground" ? "UNDERGROUND" : "GUNFIGHT"}</span>
+              <span>{props.mode === "train" ? DRILLS[props.drill ?? "range"].name.toUpperCase() : props.mode === "duel" ? "1V1 DUEL" : props.mode === "coop" ? "CO-OP" : props.dungeonVariant === "underground" ? "UNDERGROUND" : "GUNFIGHT"}</span>
               <span className="fps-chip-divider" />
               <span className="fps-map-name">{props.dungeonVariant === "underground" ? "THE LOWER LEVELS" : map.name}</span>
             </div>
